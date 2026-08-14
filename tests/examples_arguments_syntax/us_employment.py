@@ -6,7 +6,7 @@ This example is a fully developed bar chart with negative values using the sampl
 # category: case studies
 import altair as alt
 import pandas as pd
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.us_employment()
 presidents = pd.DataFrame([
@@ -21,6 +21,7 @@ presidents = pd.DataFrame([
         "president": "Obama"
     }
 ])
+predicate = alt.datum.nonfarm_change > 0
 
 bars = alt.Chart(
     source,
@@ -28,11 +29,7 @@ bars = alt.Chart(
 ).mark_bar().encode(
     x=alt.X("month:T", title=""),
     y=alt.Y("nonfarm_change:Q", title="Change in non-farm employment (in thousands)"),
-    color=alt.condition(
-        alt.datum.nonfarm_change > 0,
-        alt.value("steelblue"),
-        alt.value("orange")
-    )
+    color=alt.when(predicate).then(alt.value("steelblue")).otherwise(alt.value("orange")),
 )
 
 rule = alt.Chart(presidents).mark_rule(

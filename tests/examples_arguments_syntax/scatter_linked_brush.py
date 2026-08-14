@@ -6,7 +6,7 @@ points across multiple panels.
 """
 # category: interactive charts
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.cars()
 
@@ -14,7 +14,7 @@ brush = alt.selection_interval(resolve='global')
 
 base = alt.Chart(source).mark_point().encode(
     y='Miles_per_Gallon',
-    color=alt.condition(brush, 'Origin', alt.ColorValue('gray')),
+    color=alt.when(brush).then("Origin").otherwise(alt.ColorValue("gray")),
 ).add_params(
     brush
 ).properties(

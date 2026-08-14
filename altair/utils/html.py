@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import json
-from typing import Optional, Dict
+from typing import Any, Literal
 
 import jinja2
 
 from altair.utils._importers import import_vl_convert, vl_version_for_vl_convert
+
+TemplateName = Literal["standard", "universal", "inline", "olli"]
+RenderMode = Literal["vega", "vega-lite"]
 
 HTML_TEMPLATE = jinja2.Template(
     """
@@ -11,6 +16,7 @@ HTML_TEMPLATE = jinja2.Template(
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
 {%- endif %}
   <style>
     #{{ output_div }}.vega-embed {
@@ -111,6 +117,7 @@ HTML_TEMPLATE_UNIVERSAL = jinja2.Template(
     if (outputDiv.id !== "{{ output_div }}") {
       outputDiv = document.getElementById("{{ output_div }}");
     }
+
     const paths = {
       "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
       "vega-lib": "{{ base_url }}/vega-lib?noext",
@@ -147,7 +154,8 @@ HTML_TEMPLATE_UNIVERSAL = jinja2.Template(
 
     if(typeof define === "function" && define.amd) {
       requirejs.config({paths});
-      require(["vega-embed"], displayChart, err => showError(`Error loading script: ${err.message}`));
+      let deps = ["vega-embed"];
+      require(deps, displayChart, err => showError(`Error loading script: ${err.message}`));
     } else {
       maybeLoadScript("vega", "{{vega_version}}")
         .then(() => maybeLoadScript("vega-lite", "{{vegalite_version}}"))
@@ -171,6 +179,7 @@ INLINE_HTML_TEMPLATE = jinja2.Template(
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <style>
     #{{ output_div }}.vega-embed {
       width: 100%;
@@ -200,28 +209,140 @@ INLINE_HTML_TEMPLATE = jinja2.Template(
 )
 
 
-TEMPLATES: Dict[str, jinja2.Template] = {
+HTML_TEMPLATE_OLLI = jinja2.Template(
+    """
+<style>
+  #{{ output_div }}.vega-embed {
+    width: 100%;
+    display: flex;
+  }
+
+  #{{ output_div }}.vega-embed details,
+  #{{ output_div }}.vega-embed details summary {
+    position: relative;
+  }
+</style>
+<link rel="stylesheet" href="{{ base_url }}/olli@{{ olli_version }}/dist/styles.css">
+<div id="{{ output_div }}"></div>
+<script type="text/javascript">
+  var VEGA_DEBUG = (typeof VEGA_DEBUG == "undefined") ? {} : VEGA_DEBUG;
+  (function(spec, embedOpt){
+    let outputDiv = document.currentScript.previousElementSibling;
+    if (outputDiv.id !== "{{ output_div }}") {
+      outputDiv = document.getElementById("{{ output_div }}");
+    }
+    const olliDiv = document.createElement("div");
+    const vegaDiv = document.createElement("div");
+    outputDiv.appendChild(vegaDiv);
+    outputDiv.appendChild(olliDiv);
+    outputDiv = vegaDiv;
+
+    const paths = {
+      "vega": "{{ base_url }}/vega@{{ vega_version }}?noext",
+      "vega-lib": "{{ base_url }}/vega-lib?noext",
+      "vega-lite": "{{ base_url }}/vega-lite@{{ vegalite_version }}?noext",
+      "vega-embed": "{{ base_url }}/vega-embed@{{ vegaembed_version }}?noext",
+    };
+
+    function maybeLoadScript(lib, version) {
+      var key = `${lib.replace("-", "")}_version`;
+      return (VEGA_DEBUG[key] == version) ?
+        Promise.resolve(paths[lib]) :
+        new Promise(function(resolve, reject) {
+          var s = document.createElement('script');
+          document.getElementsByTagName("head")[0].appendChild(s);
+          s.async = true;
+          s.onload = () => {
+            VEGA_DEBUG[key] = version;
+            return resolve(paths[lib]);
+          };
+          s.onerror = () => reject(`Error loading script: ${paths[lib]}`);
+          s.src = paths[lib];
+        });
+    }
+
+    function showError(err) {
+      outputDiv.innerHTML = `<div class="error" style="color:red;">${err}</div>`;
+      throw err;
+    }
+
+    function displayChart(vegaEmbed) {
+      Promise.all([
+        import("{{ base_url }}/olli@{{ olli_version }}/+esm"),
+        import("{{ base_url }}/olli@{{ olli_version }}/adapters/+esm"),
+        import("{{ base_url }}/@umwelt-data/umwelt-utils@{{ umwelt_utils_version }}/vl-bridge/+esm"),
+      ]).then(([olliModule, adaptersModule, utilsModule]) => {
+        const { olliVis } = olliModule;
+        const { VegaLiteAdapter, looksLikeFips, enrichWithUSGeo } = adaptersModule;
+        const { connectOlliToVegaLite, withExternalStateParam } = utilsModule;
+
+        const injectedSpec = withExternalStateParam(spec);
+        vegaEmbed(outputDiv, injectedSpec, embedOpt)
+          .then(async (result) => {
+            for (const ds of (result.vgSpec || {}).data || []) {
+              if (!ds.name) continue;
+              try {
+                const rows = result.view.data(ds.name);
+                if (rows && rows.length && looksLikeFips(rows, 'id')) {
+                  const enriched = enrichWithUSGeo(rows, 'id')
+                    .map(d => Object.fromEntries(Object.entries(d)));
+                  result.view.data(ds.name, enriched);
+                  await result.view.runAsync();
+                }
+              } catch (e) { /* dataset may not be queryable */ }
+            }
+            const olliVisSpec = await VegaLiteAdapter(spec);
+            const handle = olliVis(olliVisSpec, olliDiv);
+            connectOlliToVegaLite(handle, result.view);
+          })
+          .catch(err => showError(`Javascript Error: ${err.message}<br>This usually means there's a typo in your chart specification. See the javascript console for the full traceback.`));
+      }).catch(err => {
+        console.error("Error loading olli:", err);
+        vegaEmbed(outputDiv, spec, embedOpt)
+          .catch(err => showError(`Javascript Error: ${err.message}<br>This usually means there's a typo in your chart specification. See the javascript console for the full traceback.`));
+      });
+    }
+
+    if(typeof define === "function" && define.amd) {
+      requirejs.config({paths});
+      require(["vega-embed"], displayChart, err => showError(`Error loading script: ${err.message}`));
+    } else {
+      maybeLoadScript("vega", "{{vega_version}}")
+        .then(() => maybeLoadScript("vega-lite", "{{vegalite_version}}"))
+        .then(() => maybeLoadScript("vega-embed", "{{vegaembed_version}}"))
+        .catch(showError)
+        .then(() => displayChart(vegaEmbed));
+    }
+  })({{ spec }}, {{ embed_options }});
+</script>
+"""
+)
+
+
+TEMPLATES: dict[TemplateName, jinja2.Template] = {
     "standard": HTML_TEMPLATE,
     "universal": HTML_TEMPLATE_UNIVERSAL,
     "inline": INLINE_HTML_TEMPLATE,
+    "olli": HTML_TEMPLATE_OLLI,
 }
 
 
 def spec_to_html(
-    spec: dict,
-    mode: str,
-    vega_version: Optional[str],
-    vegaembed_version: Optional[str],
-    vegalite_version: Optional[str] = None,
+    spec: dict[str, Any],
+    mode: RenderMode,
+    vega_version: str | None,
+    vegaembed_version: str | None,
+    vegalite_version: str | None = None,
     base_url: str = "https://cdn.jsdelivr.net/npm",
     output_div: str = "vis",
-    embed_options: Optional[dict] = None,
-    json_kwds: Optional[dict] = None,
+    embed_options: dict[str, Any] | None = None,
+    json_kwds: dict[str, Any] | None = None,
     fullhtml: bool = True,
     requirejs: bool = False,
-    template: str = "standard",
+    template: jinja2.Template | TemplateName = "standard",
 ) -> str:
-    """Embed a Vega/Vega-Lite spec into an HTML page
+    """
+    Embed a Vega/Vega-Lite spec into an HTML page.
 
     Parameters
     ----------
@@ -266,27 +387,37 @@ def spec_to_html(
 
     mode = embed_options.setdefault("mode", mode)
 
-    if mode not in ["vega", "vega-lite"]:
-        raise ValueError("mode must be either 'vega' or 'vega-lite'")
+    if mode not in {"vega", "vega-lite"}:
+        msg = "mode must be either 'vega' or 'vega-lite'"
+        raise ValueError(msg)
 
     if vega_version is None:
-        raise ValueError("must specify vega_version")
+        msg = "must specify vega_version"
+        raise ValueError(msg)
 
     if vegaembed_version is None:
-        raise ValueError("must specify vegaembed_version")
+        msg = "must specify vegaembed_version"
+        raise ValueError(msg)
 
     if mode == "vega-lite" and vegalite_version is None:
-        raise ValueError("must specify vega-lite version for mode='vega-lite'")
+        msg = "must specify vega-lite version for mode='vega-lite'"
+        raise ValueError(msg)
 
     render_kwargs = {}
     if template == "inline":
         vlc = import_vl_convert()
         vl_version = vl_version_for_vl_convert()
         render_kwargs["vegaembed_script"] = vlc.javascript_bundle(vl_version=vl_version)
+    elif template == "olli":
+        OLLI_VERSION = "3"
+        UMWELT_UTILS_VERSION = "0.1"
+        render_kwargs["olli_version"] = OLLI_VERSION
+        render_kwargs["umwelt_utils_version"] = UMWELT_UTILS_VERSION
 
-    jinja_template = TEMPLATES.get(template, template)
+    jinja_template = TEMPLATES.get(template, template)  # type: ignore[arg-type]
     if not hasattr(jinja_template, "render"):
-        raise ValueError("Invalid template: {0}".format(jinja_template))
+        msg = f"Invalid template: {jinja_template}"
+        raise ValueError(msg)
 
     return jinja_template.render(
         spec=json.dumps(spec, **json_kwds),

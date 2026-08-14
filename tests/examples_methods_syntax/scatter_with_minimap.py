@@ -8,7 +8,7 @@ adjusts the axis limits in another, more detailed view.
 # category: scatter plots
 
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.seattle_weather()
 
@@ -21,7 +21,7 @@ minimap = (
     .encode(
         x="date:T",
         y="temp_max:Q",
-        color=alt.condition(zoom, "weather", alt.value("lightgray")),
+        color=alt.when(zoom).then("weather").otherwise(alt.value("lightgray")),
     )
     .properties(
         width=200,

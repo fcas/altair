@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 import json
 import pkgutil
 import textwrap
-from typing import Callable, Dict, Optional, Tuple, Any, Union
 import uuid
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from ._vegafusion_data import compile_with_vegafusion, using_vegafusion
-from .plugin_registry import PluginRegistry, PluginEnabler
 from .mimebundle import spec_to_mimebundle
+from .plugin_registry import PluginEnabler, PluginRegistry
 from .schemapi import validate_jsonschema
 
+if TYPE_CHECKING:
+    from typing import TypeAlias
 
 # ==============================================================================
 # Renderer registry
@@ -16,19 +21,20 @@ from .schemapi import validate_jsonschema
 # MimeBundleType needs to be the same as what are acceptable return values
 # for _repr_mimebundle_,
 # see https://ipython.readthedocs.io/en/stable/config/integrating.html#MyObject._repr_mimebundle_
-MimeBundleDataType = Dict[str, Any]
-MimeBundleMetaDataType = Dict[str, Any]
-MimeBundleType = Union[
-    MimeBundleDataType, Tuple[MimeBundleDataType, MimeBundleMetaDataType]
-]
-RendererType = Callable[..., MimeBundleType]
+MimeBundleDataType: TypeAlias = dict[str, Any]
+MimeBundleMetaDataType: TypeAlias = dict[str, Any]
+MimeBundleType: TypeAlias = (
+    MimeBundleDataType | tuple[MimeBundleDataType, MimeBundleMetaDataType]
+)
+RendererType: TypeAlias = Callable[..., MimeBundleType]
 # Subtype of MimeBundleType as more specific in the values of the dictionaries
-DefaultRendererReturnType = Tuple[
-    Dict[str, Union[str, dict]], Dict[str, Dict[str, Any]]
+
+DefaultRendererReturnType: TypeAlias = tuple[
+    dict[str, str | dict[str, Any]], dict[str, dict[str, Any]]
 ]
 
 
-class RendererRegistry(PluginRegistry[RendererType]):
+class RendererRegistry(PluginRegistry[RendererType, MimeBundleType]):
     entrypoint_err_messages = {
         "notebook": textwrap.dedent(
             """
@@ -42,18 +48,19 @@ class RendererRegistry(PluginRegistry[RendererType]):
 
     def set_embed_options(
         self,
-        defaultStyle: Optional[Union[bool, str]] = None,
-        renderer: Optional[str] = None,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
-        padding: Optional[int] = None,
-        scaleFactor: Optional[float] = None,
-        actions: Optional[Union[bool, Dict[str, bool]]] = None,
-        format_locale: Optional[Union[str, dict]] = None,
-        time_format_locale: Optional[Union[str, dict]] = None,
+        defaultStyle: bool | str | None = None,
+        renderer: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        padding: int | None = None,
+        scaleFactor: float | None = None,
+        actions: bool | dict[str, bool] | None = None,
+        format_locale: str | dict | None = None,
+        time_format_locale: str | dict | None = None,
         **kwargs,
     ) -> PluginEnabler:
-        """Set options for embeddings of Vega & Vega-Lite charts.
+        """
+        Set options for embeddings of Vega & Vega-Lite charts.
 
         Options are fully documented at https://github.com/vega/vega-embed.
         Similar to the `enable()` method, this can be used as either
@@ -94,7 +101,7 @@ class RendererRegistry(PluginRegistry[RendererType]):
         **kwargs :
             Additional options are passed directly to embed options.
         """
-        options: Dict[str, Optional[Union[bool, str, float, Dict[str, bool]]]] = {
+        options: dict[str, bool | str | float | dict[str, bool] | None] = {
             "defaultStyle": defaultStyle,
             "renderer": renderer,
             "width": width,
@@ -115,7 +122,8 @@ class RendererRegistry(PluginRegistry[RendererType]):
 
 
 class Displayable:
-    """A base display class for VegaLite v1/v2.
+    """
+    A base display class for VegaLite v1/v2.
 
     This class takes a VegaLite v1/v2 spec and does the following:
 
@@ -129,10 +137,10 @@ class Displayable:
     through appropriate data model transformers.
     """
 
-    renderers: Optional[RendererRegistry] = None
+    renderers: RendererRegistry | None = None
     schema_path = ("altair", "")
 
-    def __init__(self, spec: dict, validate: bool = False) -> None:
+    def __init__(self, spec: dict[str, Any], validate: bool = False) -> None:
         self.spec = spec
         self.validate = validate
         self._validate()
@@ -141,7 +149,7 @@ class Displayable:
         """Validate the spec against the schema."""
         data = pkgutil.get_data(*self.schema_path)
         assert data is not None
-        schema_dict: dict = json.loads(data.decode("utf-8"))
+        schema_dict: dict[str, Any] = json.loads(data.decode("utf-8"))
         validate_jsonschema(
             self.spec,
             schema_dict,
@@ -160,19 +168,20 @@ class Displayable:
 
 
 def default_renderer_base(
-    spec: dict, mime_type: str, str_repr: str, **options
+    spec: dict[str, Any], mime_type: str, str_repr: str, **options
 ) -> DefaultRendererReturnType:
-    """A default renderer for Vega or VegaLite that works for modern frontends.
+    """
+    A default renderer for Vega or VegaLite that works for modern frontends.
 
     This renderer works with modern frontends (JupyterLab, nteract) that know
     how to render the custom VegaLite MIME type listed above.
     """
     # Local import to avoid circular ImportError
-    from altair.vegalite.v5.display import VEGA_MIME_TYPE, VEGALITE_MIME_TYPE
+    from altair.vegalite.v6.display import VEGA_MIME_TYPE, VEGALITE_MIME_TYPE
 
     assert isinstance(spec, dict)
-    bundle: Dict[str, Union[str, dict]] = {}
-    metadata: Dict[str, Dict[str, Any]] = {}
+    bundle: dict[str, str | dict] = {}
+    metadata: dict[str, dict[str, Any]] = {}
 
     if using_vegafusion():
         spec = compile_with_vegafusion(spec)
@@ -190,9 +199,10 @@ def default_renderer_base(
 
 
 def json_renderer_base(
-    spec: dict, str_repr: str, **options
+    spec: dict[str, Any], str_repr: str, **options
 ) -> DefaultRendererReturnType:
-    """A renderer that returns a MIME type of application/json.
+    """
+    A renderer that returns a MIME type of application/json.
 
     In JupyterLab/nteract this is rendered as a nice JSON tree.
     """
@@ -202,7 +212,7 @@ def json_renderer_base(
 
 
 class HTMLRenderer:
-    """Object to render charts as HTML, with a unique output div each time"""
+    """Object to render charts as HTML, with a unique output div each time."""
 
     def __init__(self, output_div: str = "altair-viz-{}", **kwargs) -> None:
         self._output_div = output_div
@@ -212,11 +222,7 @@ class HTMLRenderer:
     def output_div(self) -> str:
         return self._output_div.format(uuid.uuid4().hex)
 
-    def __call__(self, spec: dict, **metadata) -> Dict[str, str]:
+    def __call__(self, spec: dict[str, Any], **metadata) -> dict[str, str]:
         kwargs = self.kwargs.copy()
-        kwargs.update(metadata)
-        # To get proper return value type, would need to write complex
-        # overload signatures for spec_to_mimebundle based on `format`
-        return spec_to_mimebundle(  # type: ignore[return-value]
-            spec, format="html", output_div=self.output_div, **kwargs
-        )
+        kwargs.update(**metadata, output_div=self.output_div)
+        return spec_to_mimebundle(spec, format="html", **kwargs)

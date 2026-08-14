@@ -1,9 +1,13 @@
-import altair as alt
-from vega_datasets import data
+from importlib.metadata import version as importlib_version
+
 import pandas as pd
 import pytest
+from packaging.version import Version
 
-# If anywidget is not installed, we will skip the tests in this file.
+import altair as alt
+from altair.datasets import data
+
+# Tests requiring anywidget are skipped when it is not installed.
 try:
     import anywidget  # noqa: F401
 
@@ -16,20 +20,45 @@ if has_anywidget:
 else:
     jupyter_chart = None  # type: ignore
 
+skip_requires_anywidget = pytest.mark.skipif(
+    not has_anywidget, reason="anywidget not importable"
+)
+
 
 try:
-    import vegafusion  # type: ignore # noqa: F401
+    import vegafusion  # noqa: F401
 
     transformers = ["default", "vegafusion"]
 except ImportError:
     transformers = ["default"]
 
+param_transformers = pytest.mark.parametrize("transformer", transformers)
 
-@pytest.mark.parametrize("transformer", transformers)
+
+if Version(importlib_version("ipywidgets")) < Version("8.1.4"):
+    # See https://github.com/vega/altair/issues/3234#issuecomment-2268515312
+    _filterwarn = pytest.mark.filterwarnings(
+        "ignore:Deprecated in traitlets 4.1.*:DeprecationWarning"
+    )
+    jupyter_marks: pytest.MarkDecorator = skip_requires_anywidget(
+        _filterwarn(param_transformers)
+    )
+else:
+    jupyter_marks = skip_requires_anywidget(param_transformers)
+
+
+@pytest.mark.skipif(has_anywidget, reason="anywidget is importable")
+def test_jupyter_chart_without_anywidget() -> None:
+    """JupyterChart should report how to install its optional dependency."""
+    with pytest.raises(ImportError, match="requires the anywidget"):
+        alt.JupyterChart.enable_offline()
+
+    with pytest.raises(ImportError, match="requires the anywidget"):
+        alt.JupyterChart(alt.Chart())
+
+
+@jupyter_marks
 def test_chart_with_no_interactivity(transformer):
-    if not has_anywidget:
-        pytest.skip("anywidget not importable; skipping test")
-
     with alt.data_transformers.enable(transformer):
         source = pd.DataFrame(
             {
@@ -54,11 +83,8 @@ def test_chart_with_no_interactivity(transformer):
         assert len(widget.params.trait_values()) == 0
 
 
-@pytest.mark.parametrize("transformer", transformers)
+@jupyter_marks
 def test_interval_selection_example(transformer):
-    if not has_anywidget:
-        pytest.skip("anywidget not importable; skipping test")
-
     with alt.data_transformers.enable(transformer):
         source = data.cars()
         brush = alt.selection_interval(name="interval")
@@ -125,11 +151,8 @@ def test_interval_selection_example(transformer):
         assert selection.store == store
 
 
-@pytest.mark.parametrize("transformer", transformers)
+@jupyter_marks
 def test_index_selection_example(transformer):
-    if not has_anywidget:
-        pytest.skip("anywidget not importable; skipping test")
-
     with alt.data_transformers.enable(transformer):
         source = data.cars()
         brush = alt.selection_point(name="index")
@@ -188,11 +211,8 @@ def test_index_selection_example(transformer):
         assert selection.store == store
 
 
-@pytest.mark.parametrize("transformer", transformers)
+@jupyter_marks
 def test_point_selection(transformer):
-    if not has_anywidget:
-        pytest.skip("anywidget not importable; skipping test")
-
     with alt.data_transformers.enable(transformer):
         source = data.cars()
         brush = alt.selection_point(name="point", encodings=["color"], bind="legend")
@@ -254,11 +274,8 @@ def test_point_selection(transformer):
         assert selection.store == store
 
 
-@pytest.mark.parametrize("transformer", transformers)
+@jupyter_marks
 def test_param_updates(transformer):
-    if not has_anywidget:
-        pytest.skip("anywidget not importable; skipping test")
-
     with alt.data_transformers.enable(transformer):
         source = data.cars()
         size_param = alt.param(

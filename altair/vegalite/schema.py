@@ -1,4 +1,4 @@
-"""Altair schema wrappers"""
+"""Altair schema wrappers."""
 
-# ruff: noqa
-from .v5.schema import *
+# ruff: noqa: F403
+from .v6.schema import *

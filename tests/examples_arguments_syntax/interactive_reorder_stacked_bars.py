@@ -10,9 +10,10 @@ The use of "indexOf" checks for equality in an array,
 which here allows for multiple segments to be reordered
 by holding down the shift key while clicking the legend.
 """
+# :new:
 # category: interactive charts
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 selection = alt.selection_point(fields=['site'], bind='legend')
 
@@ -25,7 +26,7 @@ alt.Chart(source).mark_bar().transform_calculate(
     y='variety:N',
     color='site:N',
     order='site_order:N',
-    opacity=alt.condition(selection, alt.value(0.9), alt.value(0.2))
+    opacity=alt.when(selection).then(alt.value(0.9)).otherwise(alt.value(0.2))
 ).add_params(
     selection
 )

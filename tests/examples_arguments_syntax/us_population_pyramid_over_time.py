@@ -7,13 +7,13 @@ distribution over time.
 '''
 # category: case studies
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.population.url
 
 slider = alt.binding_range(min=1850, max=2000, step=10)
 select_year = alt.selection_point(name='year', fields=['year'],
-                                   bind=slider, value={'year': 2000})
+                                   bind=slider, value=2000)
 
 base = alt.Chart(source).add_params(
     select_year

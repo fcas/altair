@@ -1,64 +1,71 @@
-1. Make sure to have an environment set up with `hatch` installed. See `CONTRIBUTING.md`.
-   Remove any existing environments managed by `hatch` so that it will create new ones
-   with the latest dependencies when executing the commands further below:
-   
-       hatch env prune
+# Releasing Altair
 
-2. Make certain your branch is in sync with head:
- 
-       git pull upstream main
+Altair has two release paths:
 
-3. Do a clean doc build:
+- Automated stable releases for routine releases where Cocogitto's SemVer calculation is appropriate.
+- Manual releases when maintainers need to choose the release tag themselves.
 
-       hatch run doc:clean-all
-       hatch run doc:build-html
-       hatch run doc:serve
-   
-   Navigate to http://localhost:8000 and ensure it looks OK (particularly
-   do a visual scan of the gallery thumbnails).
+## Before Releasing
 
-4. Update version to, e.g. 5.0.0:
+Check that all [Vega project](https://github.com/orgs/vega/repositories?type=source) versions are up-to-date. See [NOTES_FOR_MAINTAINERS.md](NOTES_FOR_MAINTAINERS.md).
 
-   - in ``altair/__init__.py``
-   - in ``doc/conf.py``
+## Releasing
 
-5. Commit change and push to main:
+### Semi-Automated Release
 
-       git add . -u
-       git commit -m "chore: bump version to 5.0.0"
-       git push upstream main
+The `release` environment in the repository settings must have at least one required reviewer. The workflow verifies this before creating a version tag.
 
-6. Tag the release:
+1. A couple of times a month, GitHub Actions will check if notable commits have been made to main (e.g. fixes and features) since the last release. If so, a release candidate will be prepared and an issue will be opened tagging the maintainers to review it before releasing.
+    - It is also possible to trigger this release workflow manually: go to the "Actions" tab, click the `Prepare Release Draft` workflow to the left, and then "Run workflow".
+    - This workflow automates the following steps:
+        1. Checks for an existing release review issue or draft release and exits if one already exists.
+        2. Uses Cocogitto to inspect conventional commits since the latest `v*` tag.
+        3. Skips the release if no SemVer-relevant changes are found.
+        4. Runs the test suite.
+        5. Generates a release notes preview without creating a version tag.
+        6. Builds and publishes a docs preview from the candidate commit with a release-candidate banner at `release-preview/latest/`.
+        7. Opens an issue with the candidate commit, release notes, docs preview, and review instructions.
+        8. Waits for approval through the protected `release` environment.
+2. Review the issue opened by the workflow. Approve the pending release deployment if the release notes and docs preview look correct, or reject it to abort the release. Rejection creates no version tag or GitHub release.
+3. Approval creates an immutable `vX.Y.Z` tag at the exact reviewed commit and creates a draft GitHub release. Review the draft, publish it on GitHub, and close the release review issue.
+    - Publishing a non-prerelease GitHub release whose tag matches `vX.Y.Z` triggers the `Publish Release to PyPI` workflow. That workflow checks out the release tag, builds the package, publishes to PyPI using trusted publishing, and updates the official documentation.
 
-       git tag -a v5.0.0 -m "version 5.0.0 release"
-       git push upstream v5.0.0
+### Manual Release
 
-7. Build source & wheel distributions:
+Use this path for major releases, maintenance-branch releases, releases that should not follow Cocogitto's automatic SemVer calculation, or if the automated workflow fails. Unlike the automated workflow, the maintainer chooses and creates the release tag manually.
 
-       hatch clean  # clean old builds & distributions
-       hatch build  # create a source distribution and universal wheel
+1. Make sure to have [set up your environment](CONTRIBUTING.md#setting-up-your-environment). Update your environment with the latest dependencies:
 
-8. publish to PyPI (Requires correct PyPI owner permissions):
+       uv sync --all-extras
 
-        hatch publish
+2. Make certain your branch is in sync with head, and that you have no uncommitted modifications. If you work on a fork, replace `origin` with `upstream`:
 
-9. build and publish docs (Requires write-access to altair-viz/altair-viz.github.io):
+       git checkout main
+       git pull origin main
+       git status  # Should show "nothing to commit, working tree clean"
 
-        hatch run doc:publish-clean-build
+3. Do a [clean doc build](CONTRIBUTING.md#building-the-documentation-locally):
 
-10. update version to, e.g. 5.1.0dev:
+       uv run task doc-build -- --clean
 
-    - in ``altair/__init__.py``
-    - in ``doc/conf.py``
+   Navigate to http://localhost:8000 and ensure it looks OK, particularly the gallery thumbnails.
 
-11. Commit change and push to main:
+4. Run the test suite:
 
-        git add . -u
-        git commit -m "chore: bump version to 5.1.0dev"
-        git push upstream main
+       uv run task test
 
-12. Double-check that a conda-forge pull request is generated from the updated
-    pip package by the conda-forge bot (may take up to ~an hour):
-    https://github.com/conda-forge/altair-feedstock/pulls
+5. Tag the release. If you work on a fork, replace `origin` with `upstream`:
 
-13. Publish a new release in https://github.com/vega/altair/releases/
+        git tag -a v6.0.0 -m "Version 6.0.0 release"
+        git push origin tag v6.0.0
+
+6. Create a draft release at https://github.com/vega/altair/releases/new for the tag. Review the release notes, then publish the release. Publishing the GitHub release triggers PyPI publishing automatically for `vX.Y.Z` tags.
+
+7. Publish the updated documentation. To do this manually, write access to [altair-viz/altair-viz.github.io](https://github.com/altair-viz/altair-viz.github.io) is required:
+
+        uv run task doc-build -- --clean
+        uv run task doc-publish
+
+## After Releasing
+
+Double-check that a conda-forge pull request is generated from the updated PyPI package by the conda-forge bot. This is usually quick, but may take up to several hours: https://github.com/conda-forge/altair-feedstock/pulls

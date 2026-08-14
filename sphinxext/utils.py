@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 import ast
 import hashlib
 import itertools
 import json
 import re
+from pathlib import Path
+from typing import Any
 
 
-def create_thumbnail(image_filename, thumb_filename, window_size=(280, 160)):
-    """Create a thumbnail whose shortest dimension matches the window"""
+def create_thumbnail(
+    image_filename: Path,
+    thumb_filename: Path,
+    window_size: tuple[float, float] = (280, 160),
+) -> None:
+    """Create a thumbnail whose shortest dimension matches the window."""
     from PIL import Image
 
     im = Image.open(image_filename)
@@ -22,21 +30,23 @@ def create_thumbnail(image_filename, thumb_filename, window_size=(280, 160)):
         final_height = height
         final_width = int(im_width * height_factor)
 
-    thumb = im.resize((final_width, final_height), Image.ANTIALIAS)
+    thumb = im.resize((final_width, final_height), Image.Resampling.LANCZOS)
     thumb.save(thumb_filename)
 
 
-def create_generic_image(filename, shape=(200, 300), gradient=True):
-    """Create a generic image"""
-    from PIL import Image
+def create_generic_image(
+    filename: Path, shape: tuple[float, float] = (200, 300), gradient: bool = True
+) -> None:
+    """Create a generic image."""
     import numpy as np
+    from PIL import Image
 
     assert len(shape) == 2
 
     arr = np.zeros((shape[0], shape[1], 3))
     if gradient:
         # gradient from gray to white
-        arr += np.linspace(128, 255, shape[1])[:, None]
+        arr += np.linspace(128, 255, shape[1])[:, None]  # pyright: ignore[reportCallIssue,reportArgumentType]
     im = Image.fromarray(arr.astype("uint8"))
     im.save(filename)
 
@@ -48,8 +58,9 @@ Example script with invalid Python syntax
 """
 
 
-def _parse_source_file(filename):
-    """Parse source file into AST node
+def _parse_source_file(filename: str | Path) -> tuple[ast.Module | None, str]:
+    """
+    Parse source file into AST node.
 
     Parameters
     ----------
@@ -66,9 +77,7 @@ def _parse_source_file(filename):
     This function adapted from the sphinx-gallery project; license: BSD-3
     https://github.com/sphinx-gallery/sphinx-gallery/
     """
-
-    with open(filename, "r", encoding="utf-8") as fid:
-        content = fid.read()
+    content = Path(filename).read_text(encoding="utf-8")
     # change from Windows format to UNIX for uniformity
     content = content.replace("\r\n", "\n")
 
@@ -79,8 +88,11 @@ def _parse_source_file(filename):
     return node, content
 
 
-def get_docstring_and_rest(filename):
-    """Separate ``filename`` content between docstring and the rest
+def get_docstring_and_rest(  # noqa: C901
+    filename: str | Path,
+) -> tuple[str, str | None, str, int, bool]:
+    """
+    Separate ``filename`` content between docstring and the rest.
 
     Strongly inspired from ast.get_docstring.
 
@@ -99,6 +111,8 @@ def get_docstring_and_rest(filename):
         ``filename`` content without the docstring
     lineno: int
          the line number on which the code starts
+    is_new: bool
+        whether the file includes a ``# :new:`` marker before ``# category:``
 
     Notes
     -----
@@ -110,6 +124,15 @@ def get_docstring_and_rest(filename):
     # Find the category comment
     find_category = re.compile(r"^#\s*category:\s*(.*)$", re.MULTILINE)
     match = find_category.search(content)
+    find_new = re.compile(r"^#\s*:new:\s*$", re.MULTILINE)
+    match_new = find_new.search(content)
+
+    is_new = bool(
+        match is not None
+        and match_new is not None
+        and match_new.start() < match.start()
+    )
+
     if match is not None:
         category = match.groups()[0]
         # remove this comment from the content
@@ -117,24 +140,26 @@ def get_docstring_and_rest(filename):
     else:
         category = None
 
+    if is_new and match_new is not None:
+        content = content[: match_new.start()] + content[match_new.end() :]
+
+    lineno = 1
+
     if node is None:
-        return SYNTAX_ERROR_DOCSTRING, category, content, 1
+        return SYNTAX_ERROR_DOCSTRING, category, content, lineno, is_new
 
     if not isinstance(node, ast.Module):
-        raise TypeError(
-            "This function only supports modules. You provided {}".format(
-                node.__class__.__name__
-            )
-        )
+        msg = f"This function only supports modules. You provided {node.__class__.__name__}"
+        raise TypeError(msg)
     try:
         # In python 3.7 module knows its docstring.
         # Everything else will raise an attribute error
-        docstring = node.docstring
+        docstring = node.docstring  # pyright: ignore[reportAttributeAccessIssue]
 
         import tokenize
         from io import BytesIO
 
-        ts = tokenize.tokenize(BytesIO(content).readline)
+        ts = tokenize.tokenize(BytesIO(content).readline)  # pyright: ignore[reportArgumentType]
         ds_lines = 0
         # find the first string according to the tokenizer and get
         # it's end row
@@ -151,18 +176,18 @@ def get_docstring_and_rest(filename):
         if (
             node.body
             and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, (ast.Str, ast.Constant))
+            and isinstance(node.body[0].value, ast.Constant)
         ):
             docstring_node = node.body[0]
-            docstring = docstring_node.value.s
+            docstring = docstring_node.value.s  # pyright: ignore[reportAttributeAccessIssue]
             # python2.7: Code was read in bytes needs decoding to utf-8
             # unless future unicode_literals is imported in source which
             # make ast output unicode strings
             if hasattr(docstring, "decode") and not isinstance(docstring, str):
                 docstring = docstring.decode("utf-8")
             # python3.8: has end_lineno
-            lineno = (
-                getattr(docstring_node, "end_lineno", None) or docstring_node.lineno
+            lineno = getattr(
+                docstring_node, "end_lineno", docstring_node.lineno
             )  # The last line of the string.
             # This get the content of the file after the docstring last line
             # Note: 'maxsplit' argument is not a keyword argument in python2
@@ -172,29 +197,35 @@ def get_docstring_and_rest(filename):
             docstring, rest = "", ""
 
     if not docstring:
-        raise ValueError(
-            (
-                'Could not find docstring in file "{0}". '
-                "A docstring is required for the example gallery."
-            ).format(filename)
+        msg = (
+            f'Could not find docstring in file "{filename}". '
+            "A docstring is required for the example gallery."
         )
-    return docstring, category, rest, lineno
+        raise ValueError(msg)
+    return docstring, category, rest, lineno, is_new
 
 
-def prev_this_next(it, sentinel=None):
-    """Utility to return (prev, this, next) tuples from an iterator"""
+def prev_this_next(
+    it: list[dict[str, Any]], sentinel: None = None
+) -> zip[tuple[dict[str, Any] | None, dict[str, Any], dict[str, Any] | None]]:
+    """Utility to return (prev, this, next) tuples from an iterator."""
     i1, i2, i3 = itertools.tee(it, 3)
     next(i3, None)
-    return zip(itertools.chain([sentinel], i1), i2, itertools.chain(i3, [sentinel]))
+    return zip(
+        itertools.chain([sentinel], i1),
+        i2,
+        itertools.chain(i3, [sentinel]),
+        strict=False,
+    )
 
 
-def dict_hash(dct):
-    """Return a hash of the contents of a dictionary"""
+def dict_hash(dct: dict[Any, Any]) -> Any:
+    """Return a hash of the contents of a dictionary."""
     serialized = json.dumps(dct, sort_keys=True)
 
     try:
-        m = hashlib.sha256(serialized)[:32]
+        m = hashlib.sha256(serialized)[:32]  # pyright: ignore[reportArgumentType,reportIndexIssue]
     except TypeError:
-        m = hashlib.sha256(serialized.encode())[:32]
+        m = hashlib.sha256(serialized.encode())[:32]  # pyright: ignore[reportIndexIssue]
 
     return m.hexdigest()

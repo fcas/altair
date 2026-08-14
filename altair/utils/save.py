@@ -1,43 +1,47 @@
+from __future__ import annotations
+
 import json
 import pathlib
 import warnings
-from typing import IO, Union, Optional, Literal
+from typing import IO, TYPE_CHECKING, Any, Literal
+
+from altair.utils._vegafusion_data import using_vegafusion
+from altair.utils.deprecation import deprecated_warn
+from altair.vegalite.v6.data import data_transformers
 
 from .mimebundle import spec_to_mimebundle
-from ..vegalite.v5.data import data_transformers
-from altair.utils._vegafusion_data import using_vegafusion
-from altair.utils.deprecation import AltairDeprecationWarning
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def write_file_or_filename(
-    fp: Union[str, pathlib.PurePath, IO],
-    content: Union[str, bytes],
+    fp: str | Path | IO[Any],
+    content: str | bytes,
     mode: str = "w",
-    encoding: Optional[str] = None,
+    encoding: str | None = None,
 ) -> None:
-    """Write content to fp, whether fp is a string, a pathlib Path or a
-    file-like object"""
-    if isinstance(fp, str) or isinstance(fp, pathlib.PurePath):
-        with open(file=fp, mode=mode, encoding=encoding) as f:
+    """Write content to fp, whether fp is a string, a pathlib Path or a file-like object."""
+    if isinstance(fp, (str, pathlib.Path)):
+        with pathlib.Path(fp).open(mode=mode, encoding=encoding) as f:
             f.write(content)
     else:
         fp.write(content)
 
 
 def set_inspect_format_argument(
-    format: Optional[str], fp: Union[str, pathlib.PurePath, IO], inline: bool
+    format: str | None, fp: str | Path | IO[Any], inline: bool
 ) -> str:
-    """Inspect the format argument in the save function"""
+    """Inspect the format argument in the save function."""
     if format is None:
-        if isinstance(fp, str):
-            format = fp.split(".")[-1]
-        elif isinstance(fp, pathlib.PurePath):
-            format = fp.suffix.lstrip(".")
+        if isinstance(fp, (str, pathlib.Path)):
+            format = pathlib.Path(fp).suffix.lstrip(".")
         else:
-            raise ValueError(
+            msg = (
                 "must specify file format: "
                 "['png', 'svg', 'pdf', 'html', 'json', 'vega']"
             )
+            raise ValueError(msg)
 
     if format != "html" and inline:
         warnings.warn("inline argument ignored for non HTML formats.", stacklevel=1)
@@ -46,12 +50,12 @@ def set_inspect_format_argument(
 
 
 def set_inspect_mode_argument(
-    mode: Optional[Literal["vega-lite"]],
-    embed_options: dict,
-    spec: dict,
-    vegalite_version: Optional[str],
+    mode: Literal["vega-lite"] | None,
+    embed_options: dict[str, Any],
+    spec: dict[str, Any],
+    vegalite_version: str | None,
 ) -> Literal["vega-lite"]:
-    """Inspect the mode argument in the save function"""
+    """Inspect the mode argument in the save function."""
     if mode is None:
         if "mode" in embed_options:
             mode = embed_options["mode"]
@@ -61,33 +65,128 @@ def set_inspect_mode_argument(
             mode = "vega-lite"
 
     if mode != "vega-lite":
-        raise ValueError("mode must be 'vega-lite', " "not '{}'".format(mode))
+        msg = f"mode must be 'vega-lite', not '{mode}'"
+        raise ValueError(msg)
 
     if mode == "vega-lite" and vegalite_version is None:
-        raise ValueError("must specify vega-lite version")
+        msg = "must specify vega-lite version"
+        raise ValueError(msg)
 
     return mode
 
 
+def _save_mimebundle_format(
+    spec: dict[str, Any],
+    format: Literal["html", "png", "svg", "pdf", "vega"],
+    fp: str | Path | IO[Any],
+    inner_mode: Literal["vega-lite"],
+    vega_version: str | None,
+    vegalite_version: str | None,
+    vegaembed_version: str | None,
+    embed_options: dict[str, Any] | None,
+    json_kwds: dict[str, Any],
+    encoding: str,
+    scale_factor: float,
+    engine: Literal["vl-convert"] | None,
+    inline: bool,
+    **kwargs: Any,
+) -> None:
+    """Save chart using spec_to_mimebundle for formats that require it."""
+    if format == "html":
+        if inline:
+            kwargs["template"] = "inline"
+        mb_result: dict[str, str] = spec_to_mimebundle(
+            spec=spec,
+            format=format,
+            mode=inner_mode,
+            vega_version=vega_version,
+            vegalite_version=vegalite_version,
+            vegaembed_version=vegaembed_version,
+            embed_options=embed_options,
+            json_kwds=json_kwds,
+            **kwargs,
+        )
+        write_file_or_filename(fp, mb_result["text/html"], mode="w", encoding=encoding)
+    elif format == "png":
+        mb_result_png: tuple[dict[str, Any], dict[str, Any]] = spec_to_mimebundle(
+            spec=spec,
+            format=format,
+            mode=inner_mode,
+            vega_version=vega_version,
+            vegalite_version=vegalite_version,
+            vegaembed_version=vegaembed_version,
+            embed_options=embed_options,
+            scale_factor=scale_factor,
+            engine=engine,
+            **kwargs,
+        )
+        write_file_or_filename(fp, mb_result_png[0]["image/png"], mode="wb")
+    elif format == "svg":
+        mb_result = spec_to_mimebundle(
+            spec=spec,
+            format=format,
+            mode=inner_mode,
+            vega_version=vega_version,
+            vegalite_version=vegalite_version,
+            vegaembed_version=vegaembed_version,
+            embed_options=embed_options,
+            scale_factor=scale_factor,
+            engine=engine,
+            **kwargs,
+        )
+        write_file_or_filename(
+            fp, mb_result["image/svg+xml"], mode="w", encoding=encoding
+        )
+    elif format == "pdf":
+        mb_result = spec_to_mimebundle(
+            spec=spec,
+            format=format,
+            mode=inner_mode,
+            vega_version=vega_version,
+            vegalite_version=vegalite_version,
+            vegaembed_version=vegaembed_version,
+            embed_options=embed_options,
+            scale_factor=scale_factor,
+            engine=engine,
+            **kwargs,
+        )
+        write_file_or_filename(fp, mb_result["application/pdf"], mode="wb")
+    else:  # vega
+        mb_result = spec_to_mimebundle(
+            spec=spec,
+            format=format,
+            mode=inner_mode,
+            vega_version=vega_version,
+            vegalite_version=vegalite_version,
+            vegaembed_version=vegaembed_version,
+            embed_options=embed_options,
+            scale_factor=scale_factor,
+            engine=engine,
+            **kwargs,
+        )
+        json_spec = json.dumps(mb_result["application/vnd.vega.v6+json"], **json_kwds)
+        write_file_or_filename(fp, json_spec, mode="w", encoding=encoding)
+
+
 def save(
     chart,
-    fp: Union[str, pathlib.PurePath, IO],
-    vega_version: Optional[str],
-    vegaembed_version: Optional[str],
-    format: Optional[Literal["json", "html", "png", "svg", "pdf"]] = None,
-    mode: Optional[Literal["vega-lite"]] = None,
-    vegalite_version: Optional[str] = None,
-    embed_options: Optional[dict] = None,
-    json_kwds: Optional[dict] = None,
-    webdriver: Optional[Literal["chrome", "firefox"]] = None,
+    fp: str | Path | IO[Any],
+    vega_version: str | None,
+    vegaembed_version: str | None,
+    format: Literal["json", "html", "png", "svg", "pdf", "vega"] | None = None,
+    mode: Literal["vega-lite"] | None = None,
+    vegalite_version: str | None = None,
+    embed_options: dict[str, Any] | None = None,
+    json_kwds: dict[str, Any] | None = None,
     scale_factor: float = 1,
-    engine: Optional[Literal["vl-convert"]] = None,
+    engine: Literal["vl-convert"] | None = None,
     inline: bool = False,
     **kwargs,
 ) -> None:
-    """Save a chart to file in a variety of formats
+    """
+    Save a chart to file in a variety of formats.
 
-    Supported formats are [json, html, png, svg, pdf]
+    Supported formats are [json, html, png, svg, pdf, vega]
 
     Parameters
     ----------
@@ -96,7 +195,7 @@ def save(
     fp : string filename, pathlib.Path or file-like object
         file to which to write the chart.
     format : string (optional)
-        the format to write: one of ['json', 'html', 'png', 'svg', 'pdf'].
+        the format to write: one of ['json', 'html', 'png', 'svg', 'pdf', 'vega'].
         If not specified, the format will be determined from the filename.
     mode : string (optional)
         Must be 'vega-lite'. If not specified, then infer the mode from
@@ -114,12 +213,10 @@ def save(
     json_kwds : dict (optional)
         Additional keyword arguments are passed to the output method
         associated with the specified format.
-    webdriver : string {'chrome' | 'firefox'} (optional)
-        This argument is deprecated as it's not relevant for the new vl-convert engine.
     scale_factor : float (optional)
         scale_factor to use to change size/resolution of png or svg output
     engine: string {'vl-convert'}
-        the conversion engine to use for 'png', 'svg', and 'pdf' formats
+        the conversion engine to use for 'png', 'svg', 'pdf', and 'vega' formats
     inline: bool (optional)
         If False (default), the required JavaScript libraries are loaded
         from a CDN location in the resulting html file.
@@ -129,21 +226,18 @@ def save(
     **kwargs :
         additional kwargs passed to spec_to_mimebundle.
     """
-    if webdriver is not None:
-        warnings.warn(
-            "The webdriver argument is deprecated as it's not relevant for"
-            + " the new vl-convert engine which replaced altair_saver."
-            + " The argument will be removed in a future release.",
-            AltairDeprecationWarning,
-            stacklevel=1,
+    if _ := kwargs.pop("webdriver", None):
+        deprecated_warn(
+            "The webdriver argument is not relevant for the new vl-convert engine which replaced altair_saver. "
+            "The argument will be removed in a future release.",
+            version="5.0.0",
         )
 
-    if json_kwds is None:
-        json_kwds = {}
+    json_kwds = json_kwds or {}
+    encoding = kwargs.get("encoding", "utf-8")
+    format = set_inspect_format_argument(format, fp, inline)  # type: ignore
 
-    format = set_inspect_format_argument(format, fp, inline)  # type: ignore[assignment]
-
-    def perform_save():
+    def perform_save() -> None:
         spec = chart.to_dict(context={"pre_transform": False})
 
         inner_mode = set_inspect_mode_argument(
@@ -152,53 +246,27 @@ def save(
 
         if format == "json":
             json_spec = json.dumps(spec, **json_kwds)
-            write_file_or_filename(
-                fp, json_spec, mode="w", encoding=kwargs.get("encoding", "utf-8")
-            )
-        elif format == "html":
-            if inline:
-                kwargs["template"] = "inline"
-            mimebundle = spec_to_mimebundle(
+            write_file_or_filename(fp, json_spec, mode="w", encoding=encoding)
+        elif format in {"html", "png", "svg", "pdf", "vega"}:
+            _save_mimebundle_format(
                 spec=spec,
                 format=format,
-                mode=inner_mode,
+                fp=fp,
+                inner_mode=inner_mode,
                 vega_version=vega_version,
                 vegalite_version=vegalite_version,
                 vegaembed_version=vegaembed_version,
                 embed_options=embed_options,
                 json_kwds=json_kwds,
-                **kwargs,
-            )
-            write_file_or_filename(
-                fp,
-                mimebundle["text/html"],
-                mode="w",
-                encoding=kwargs.get("encoding", "utf-8"),
-            )
-        elif format in ["png", "svg", "pdf", "vega"]:
-            mimebundle = spec_to_mimebundle(
-                spec=spec,
-                format=format,
-                mode=inner_mode,
-                vega_version=vega_version,
-                vegalite_version=vegalite_version,
-                vegaembed_version=vegaembed_version,
-                embed_options=embed_options,
+                encoding=encoding,
                 scale_factor=scale_factor,
                 engine=engine,
+                inline=inline,
                 **kwargs,
             )
-            if format == "png":
-                write_file_or_filename(fp, mimebundle[0]["image/png"], mode="wb")
-            elif format == "pdf":
-                write_file_or_filename(fp, mimebundle["application/pdf"], mode="wb")
-            else:
-                encoding = kwargs.get("encoding", "utf-8")
-                write_file_or_filename(
-                    fp, mimebundle["image/svg+xml"], mode="w", encoding=encoding
-                )
         else:
-            raise ValueError("Unsupported format: '{}'".format(format))
+            msg = f"Unsupported format: '{format}'"
+            raise ValueError(msg)
 
     if using_vegafusion():
         # When the vegafusion data transformer is enabled, transforms will be

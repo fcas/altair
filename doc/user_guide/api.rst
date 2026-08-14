@@ -9,6 +9,8 @@ Please refer to the `full user guide <http://altair-viz.github.io>`_ for
 further details, as this low-level documentation may not be enough to give
 full guidelines on their use.
 
+.. _api-toplevel:
+
 Top-Level Objects
 -----------------
 .. currentmodule:: altair
@@ -25,6 +27,8 @@ Top-Level Objects
    RepeatChart
    TopLevelMixin
    VConcatChart
+
+.. _api-channels:
 
 Encoding Channels
 -----------------
@@ -103,6 +107,7 @@ Encoding Channels
    Theta2Value
    ThetaDatum
    ThetaValue
+   Time
    Tooltip
    TooltipValue
    Url
@@ -134,6 +139,8 @@ Encoding Channels
    YOffsetValue
    YValue
 
+.. _api-functions:
+
 API Functions
 -------------
 .. currentmodule:: altair
@@ -155,16 +162,104 @@ API Functions
    layer
    param
    repeat
-   selection
    selection_interval
-   selection_multi
    selection_point
-   selection_single
    sequence
    sphere
    topo_feature
    value
    vconcat
+   when
+
+.. _api-theme:
+
+Theme
+-----
+.. currentmodule:: altair.theme
+
+.. autosummary::
+   :toctree: generated/theme/
+   :nosignatures:
+
+   active
+   enable
+   get
+   names
+   options
+   register
+   unregister
+   ThemeConfig
+   AreaConfigKwds
+   AutoSizeParamsKwds
+   AxisConfigKwds
+   AxisResolveMapKwds
+   BarConfigKwds
+   BindCheckboxKwds
+   BindDirectKwds
+   BindInputKwds
+   BindRadioSelectKwds
+   BindRangeKwds
+   BoxPlotConfigKwds
+   BrushConfigKwds
+   CompositionConfigKwds
+   ConfigKwds
+   DateTimeKwds
+   DerivedStreamKwds
+   ErrorBandConfigKwds
+   ErrorBarConfigKwds
+   FeatureGeometryGeoJsonPropertiesKwds
+   FormatConfigKwds
+   GeoJsonFeatureCollectionKwds
+   GeoJsonFeatureKwds
+   GeometryCollectionKwds
+   GradientStopKwds
+   HeaderConfigKwds
+   IntervalSelectionConfigKwds
+   IntervalSelectionConfigWithoutTypeKwds
+   LegendConfigKwds
+   LegendResolveMapKwds
+   LegendStreamBindingKwds
+   LineConfigKwds
+   LineStringKwds
+   LinearGradientKwds
+   LocaleKwds
+   MarkConfigKwds
+   MergedStreamKwds
+   MultiLineStringKwds
+   MultiPointKwds
+   MultiPolygonKwds
+   NumberLocaleKwds
+   OverlayMarkDefKwds
+   PaddingKwds
+   PointKwds
+   PointSelectionConfigKwds
+   PointSelectionConfigWithoutTypeKwds
+   PolygonKwds
+   ProjectionConfigKwds
+   ProjectionKwds
+   RadialGradientKwds
+   RangeConfigKwds
+   RectConfigKwds
+   ResolveKwds
+   RowColKwds
+   ScaleConfigKwds
+   ScaleInvalidDataConfigKwds
+   ScaleResolveMapKwds
+   SelectionConfigKwds
+   StepKwds
+   StyleConfigIndexKwds
+   TickConfigKwds
+   TimeIntervalStepKwds
+   TimeLocaleKwds
+   TitleConfigKwds
+   TitleParamsKwds
+   TooltipContentKwds
+   TopLevelSelectionParameterKwds
+   VariableParameterKwds
+   ViewBackgroundKwds
+   ViewConfigKwds
+
+.. _api-core:
 
 Low-Level Schema Wrappers
 -------------------------
@@ -345,6 +440,7 @@ Low-Level Schema Wrappers
    FoldTransform
    FontStyle
    FontWeight
+   Format
    FormatConfig
    Generator
    GenericUnitSpecEncodingAnyMark
@@ -402,6 +498,7 @@ Low-Level Schema Wrappers
    Mark
    MarkConfig
    MarkDef
+   MarkInvalidDataMode
    MarkPropDefGradientstringnull
    MarkPropDefnumber
    MarkPropDefnumberArray
@@ -482,6 +579,43 @@ Low-Level Schema Wrappers
    ScaleFieldDef
    ScaleInterpolateEnum
    ScaleInterpolateParams
+   ScaleInvalidDataConfig
+   ScaleInvalidDataShowAsValueangle
+   ScaleInvalidDataShowAsValuecolor
+   ScaleInvalidDataShowAsValuefill
+   ScaleInvalidDataShowAsValuefillOpacity
+   ScaleInvalidDataShowAsValueopacity
+   ScaleInvalidDataShowAsValueradius
+   ScaleInvalidDataShowAsValueshape
+   ScaleInvalidDataShowAsValuesize
+   ScaleInvalidDataShowAsValuestroke
+   ScaleInvalidDataShowAsValuestrokeDash
+   ScaleInvalidDataShowAsValuestrokeOpacity
+   ScaleInvalidDataShowAsValuestrokeWidth
+   ScaleInvalidDataShowAsValuetheta
+   ScaleInvalidDataShowAsValuetime
+   ScaleInvalidDataShowAsValuex
+   ScaleInvalidDataShowAsValuexOffset
+   ScaleInvalidDataShowAsValuey
+   ScaleInvalidDataShowAsValueyOffset
+   ScaleInvalidDataShowAsangle
+   ScaleInvalidDataShowAscolor
+   ScaleInvalidDataShowAsfill
+   ScaleInvalidDataShowAsfillOpacity
+   ScaleInvalidDataShowAsopacity
+   ScaleInvalidDataShowAsradius
+   ScaleInvalidDataShowAsshape
+   ScaleInvalidDataShowAssize
+   ScaleInvalidDataShowAsstroke
+   ScaleInvalidDataShowAsstrokeDash
+   ScaleInvalidDataShowAsstrokeOpacity
+   ScaleInvalidDataShowAsstrokeWidth
+   ScaleInvalidDataShowAstheta
+   ScaleInvalidDataShowAstime
+   ScaleInvalidDataShowAsx
+   ScaleInvalidDataShowAsxOffset
+   ScaleInvalidDataShowAsy
+   ScaleInvalidDataShowAsyOffset
    ScaleResolveMap
    ScaleType
    SchemaBase
@@ -530,6 +664,9 @@ Low-Level Schema Wrappers
    TextDirection
    TickConfig
    TickCount
+   TimeDef
+   TimeFieldDef
+   TimeFormatSpecifier
    TimeInterval
    TimeIntervalStep
    TimeLocale
@@ -590,3 +727,93 @@ Low-Level Schema Wrappers
    WindowFieldDef
    WindowOnlyOp
    WindowTransform
+
+.. _api-cls:
+
+API Utility Classes
+-------------------
+.. currentmodule:: altair
+
+.. autosummary::
+   :toctree: generated/api-cls/
+   :nosignatures:
+
+   expr
+   When
+   Then
+   ChainedWhen
+
+.. _api-typing:
+
+Typing
+------
+.. currentmodule:: altair.typing
+
+.. autosummary::
+   :toctree: generated/typing/
+   :nosignatures:
+
+   ChannelAngle
+   ChannelColor
+   ChannelColumn
+   ChannelDescription
+   ChannelDetail
+   ChannelFacet
+   ChannelFill
+   ChannelFillOpacity
+   ChannelHref
+   ChannelKey
+   ChannelLatitude
+   ChannelLatitude2
+   ChannelLongitude
+   ChannelLongitude2
+   ChannelOpacity
+   ChannelOrder
+   ChannelRadius
+   ChannelRadius2
+   ChannelRow
+   ChannelShape
+   ChannelSize
+   ChannelStroke
+   ChannelStrokeDash
+   ChannelStrokeOpacity
+   ChannelStrokeWidth
+   ChannelText
+   ChannelTheta
+   ChannelTheta2
+   ChannelTooltip
+   ChannelUrl
+   ChannelX
+   ChannelX2
+   ChannelXError
+   ChannelXError2
+   ChannelXOffset
+   ChannelY
+   ChannelY2
+   ChannelYError
+   ChannelYError2
+   ChannelYOffset
+   ChartType
+   EncodeKwds
+   Optional
+   is_chart_type
+
+.. _api-datasets:
+
+Datasets
+--------
+.. currentmodule:: altair.datasets
+
+.. autosummary::
+   :toctree: generated/datasets/
+   :nosignatures:
+
+   Loader
+   data
+   load
+   url
+
+.. _Generic:
+    https://typing.readthedocs.io/en/latest/spec/generics.html#generics
+.. _vega-datasets:
+    https://github.com/vega/vega-datasets

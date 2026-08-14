@@ -19,7 +19,9 @@ from datetime import datetime
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath(".."))
+sys.path.insert(0, os.path.abspath(".."))  # noqa: PTH100
+
+import altair
 
 # -- General configuration ------------------------------------------------
 
@@ -39,6 +41,7 @@ extensions = [
     "sphinxext_altair.altairplot",
     "sphinxext.altairgallery",
     "sphinxext.schematable",
+    "sphinxext.code_ref",
     "sphinx_copybutton",
     "sphinx_design",
 ]
@@ -51,8 +54,11 @@ autodoc_member_order = "groupwise"
 
 autodoc_typehints = "none"
 
-# generate autosummary even if no references
-autosummary_generate = True
+# generate autosummary pages (set ALTAIR_AUTOSUMMARY_GENERATE=0 for faster local builds)
+autosummary_generate = os.environ.get("ALTAIR_AUTOSUMMARY_GENERATE", "1") != "0"
+
+# generate gallery pages (set ALTAIR_GALLERY_GENERATE=0 for faster local builds)
+altair_gallery_generate = os.environ.get("ALTAIR_GALLERY_GENERATE", "1") != "0"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -60,7 +66,7 @@ templates_path = ["_templates"]
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
 # source_suffix = ['.rst', '.md']
-source_suffix = ".rst"
+source_suffix = {".rst": "restructuredtext"}
 
 # The encoding of source files.
 # source_encoding = 'utf-8-sig'
@@ -70,7 +76,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "Vega-Altair"
-copyright = "2016-{}, Vega-Altair Developers".format(datetime.now().year)
+copyright = f"2015-{datetime.now().year}, Vega-Altair Developers"
 author = "Vega-Altair Developers"
 
 # The version info for the project you're documenting, acts as replacement for
@@ -78,7 +84,7 @@ author = "Vega-Altair Developers"
 # built documents.
 #
 # The short X.Y version.
-version = "5.4.0dev"
+version = altair.__version__
 # The full version, including alpha/beta/rc tags.
 release = f"{version}"
 
@@ -99,6 +105,12 @@ language = "en"
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+if not autosummary_generate:
+    exclude_patterns.extend(["user_guide/generated/**"])
+
+suppress_warnings = []
+if not autosummary_generate and not altair_gallery_generate:
+    suppress_warnings.extend(["toc.not_readable", "toc.not_included"])
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
@@ -142,7 +154,6 @@ html_theme_options = {
     "navbar_center": ["navbar-nav"],
     "navbar_end": ["theme-switcher", "navbar-icon-links"],
     "primary_sidebar_end": [],
-    "footer_items": [],
     "icon_links": [
         {
             "name": "GitHub",
@@ -158,12 +169,20 @@ html_theme_options = {
         },
     ],
     "header_links_before_dropdown": 4,
-    "announcement": """This website is for version 5. You can find the documentation for version 4 <a href='https://altair-viz.github.io/altair-viz-v4/'>here</a>.""",
     "analytics": {
         "plausible_analytics_domain": "altair-viz.github.io",
         "plausible_analytics_url": ("https://views.scientific-python.org/js/script.js"),
     },
 }
+
+if preview_tag := os.environ.get("ALTAIR_RELEASE_PREVIEW_TAG"):
+    html_theme_options["announcement"] = (
+        "<strong style='font-size:1.2em;'>"
+        f"⚠️ Preview build for draft release {preview_tag} &mdash; "
+        'not the <a href="https://altair-viz.github.io/" style="color:inherit;">'
+        "official Altair documentation</a>. ⚠️"
+        "</strong>"
+    )
 
 html_context = {"default_mode": "light"}
 
@@ -193,9 +212,30 @@ html_static_path = ["_static", "_images"]
 
 
 # adapted from: http://rackerlabs.github.io/docs-rackspace/tools/rtd-tables.html
-# and
-# https://github.com/rtfd/sphinx_rtd_theme/issues/117
+# and https://github.com/rtfd/sphinx_rtd_theme/issues/117
 def setup(app):
+    if not autosummary_generate:
+        from sphinx.ext.autosummary import Autosummary
+
+        class FastAutosummary(Autosummary):
+            def run(self):
+                return []
+
+        app.add_directive("autosummary", FastAutosummary, override=True)
+
+    if not autosummary_generate and not altair_gallery_generate:
+
+        def _resolve_missing_gallery_refs(app, env, node, contnode):
+            target = node.get("reftarget")
+            if isinstance(target, str) and (
+                target == "example-gallery"
+                or target.startswith(("gallery_", "gallery-category-"))
+            ):
+                return contnode
+            return None
+
+        app.connect("missing-reference", _resolve_missing_gallery_refs)
+
     app.add_css_file("theme_overrides.css")
     app.add_css_file("custom.css")
 
@@ -370,4 +410,4 @@ altairplot_links = {"editor": True, "source": True, "export": True}
 # Defaults for below are drawn from Altair; override here.
 # altairplot_vega_js_url = "https://cdn.jsdelivr.net/npm/vega@5"
 # altairplot_vegalite_js_url = "https://cdn.jsdelivr.net/npm/vega-lite@4"
-# altairplot_vegaembed_js_url = "https://cdn.jsdelivr.net/npm/vega-embed@6"
+# altairplot_vegaembed_js_url = "https://cdn.jsdelivr.net/npm/vega-embed@7"

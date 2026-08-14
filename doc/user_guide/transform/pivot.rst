@@ -44,7 +44,7 @@ values on multiple lines:
 .. altair-plot::
 
    import altair as alt
-   from vega_datasets import data
+   from altair.datasets import data
 
    source = data.stocks()
    base = alt.Chart(source).encode(x='date:T')
@@ -59,7 +59,7 @@ values on multiple lines:
    rule = base.transform_pivot(
        'symbol', value='price', groupby=['date']
    ).mark_rule().encode(
-       opacity=alt.condition(selection, alt.value(0.3), alt.value(0)),
+       opacity=alt.when(selection).then(alt.value(0.3)).otherwise(alt.value(0)),
        tooltip=[alt.Tooltip(c, type='quantitative') for c in columns]
    ).add_params(selection)
 

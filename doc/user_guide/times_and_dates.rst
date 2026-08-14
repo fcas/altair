@@ -2,8 +2,8 @@
 
 .. _user-guide-time:
 
-Times and Dates
-===============
+Times & Dates
+=============
 Working with dates, times, and timezones is often one of the more challenging
 aspects of data analysis. In Altair, the difficulties are compounded by the
 fact that users are writing Python code, which outputs JSON-serialized
@@ -25,9 +25,9 @@ containing hourly temperatures measured in Seattle:
     :output: repr
 
     import altair as alt
-    from vega_datasets import data
+    from altair.datasets import data
 
-    temps = data.seattle_temps()
+    temps = data.seattle_weather_hourly_normals()
     temps.head()
 
 We can see from the ``dtypes`` attribute that the times are encoded as a standard
@@ -47,7 +47,7 @@ example, we'll limit ourselves to the first two weeks of data:
 
     alt.Chart(temps).mark_line().encode(
         x='date:T',
-        y='temp:Q'
+        y='temperature:Q'
     )
 
 Notice that for date/time values we use the ``T`` to indicate a temporal
@@ -69,7 +69,7 @@ x-axis, and day of the month on the y-axis:
     alt.Chart(temps).mark_rect().encode(
         alt.X('hoursminutes(date):O').title('hour of day'),
         alt.Y('monthdate(date):O').title('date'),
-        alt.Color('temp:Q').title('temperature (F)')
+        alt.Color('temperature:Q').title('temperature (C)')
     )
 
 Unless you are using a non-ES6 browser (See :ref:`note-browser-compliance`),
@@ -108,7 +108,7 @@ render **according to the timezone of the browser rendering it**:
     alt.Chart(temps).mark_rect().encode(
         alt.X('hoursminutes(date_pacific):O').title('hour of day'),
         alt.Y('monthdate(date_pacific):O').title('date'),
-        alt.Color('temp:Q').title('temperature (F)')
+        alt.Color('temperature:Q').title('temperature (C)')
     )
 
 If you are viewing this chart on a computer whose time is set to the west coast
@@ -136,7 +136,7 @@ regardless of the system location:
     alt.Chart(temps).mark_rect().encode(
         alt.X('utchoursminutes(date_pacific):O').title('UTC hour of day'),
         alt.Y('utcmonthdate(date_pacific):O').title('UTC date'),
-        alt.Color('temp:Q').title('temperature (F)')
+        alt.Color('temperature:Q').title('temperature (C)')
     )
 
 To make your charts as portable as possible (even in non-ES6 browsers which parse
@@ -151,7 +151,7 @@ in UTC time, both on the pandas side and on the Vega-Lite side:
    alt.Chart(temps).mark_rect().encode(
        alt.X('utchoursminutes(date_utc):O').title('hour of day'),
        alt.Y('utcmonthdate(date_utc):O').title('date'),
-       alt.Color('temp:Q').title('temperature (F)')
+       alt.Color('temperature:Q').title('temperature (C)')
    )
 
 This is somewhat less convenient than the default behavior for timezone-agnostic
@@ -187,12 +187,13 @@ way that Altair expects:
 
     df = pd.DataFrame({'local': ['2018-01-01T00:00:00'],
                        'utc': ['2018-01-01T00:00:00Z']})
+    when_compliant = alt.when(compliant=True)
 
     alt.Chart(df).transform_calculate(
         compliant="hours(datum.local) != hours(datum.utc) ? true : false",
-    ).mark_text(size=20, baseline='middle').encode(
-        text=alt.condition('datum.compliant', alt.value('OK'), alt.value('not OK')),
-        color=alt.condition('datum.compliant', alt.value('green'), alt.value('red'))
+    ).mark_text(size=20, baseline="middle").encode(
+        text=when_compliant.then(alt.value("OK")).otherwise(alt.value("not OK")),
+        color=when_compliant.then(alt.value("green")).otherwise(alt.value("red")),
     ).properties(width=80, height=50)
 
 If the above output contains a red "not OK":

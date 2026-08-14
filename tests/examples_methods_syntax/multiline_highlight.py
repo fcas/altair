@@ -8,7 +8,7 @@ https://bl.ocks.org/amitkaps/fe4238e716db53930b2f1a70d3401701
 """
 # category: interactive charts
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.stocks()
 
@@ -29,7 +29,7 @@ points = base.mark_circle().encode(
 )
 
 lines = base.mark_line().encode(
-    size=alt.condition(~highlight, alt.value(1), alt.value(3))
+    size=alt.when(~highlight).then(alt.value(1)).otherwise(alt.value(3))
 )
 
 points + lines

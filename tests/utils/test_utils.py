@@ -1,22 +1,22 @@
 import io
 import json
-import warnings
 
+import narwhals.stable.v1 as nw
 import numpy as np
 import pandas as pd
 import pytest
 
-from altair.utils import infer_vegalite_type, sanitize_dataframe, sanitize_arrow_table
-
-try:
-    import pyarrow as pa
-except ImportError:
-    pa = None
+from altair.utils import (
+    infer_vegalite_type_for_pandas,
+    sanitize_narwhals_dataframe,
+    sanitize_pandas_dataframe,
+)
+from tests import skip_requires_polars, skip_requires_pyarrow
 
 
 def test_infer_vegalite_type():
     def _check(arr, typ):
-        assert infer_vegalite_type(arr) == typ
+        assert infer_vegalite_type_for_pandas(arr) == typ
 
     _check(np.arange(5, dtype=float), "quantitative")
     _check(np.arange(5, dtype=int), "quantitative")
@@ -24,18 +24,14 @@ def test_infer_vegalite_type():
     _check(pd.date_range("2012", "2013"), "temporal")
     _check(pd.timedelta_range(365, periods=12), "temporal")
 
-    nulled = pd.Series(np.random.randint(10, size=10))
+    rng = np.random.default_rng()
+    nulled = pd.Series(rng.integers(10, size=10))
     nulled[0] = None
     _check(nulled, "quantitative")
     _check(["a", "b", "c"], "nominal")
 
-    if hasattr(pytest, "warns"):  # added in pytest 2.8
-        with pytest.warns(UserWarning):
-            _check([], "nominal")
-    else:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore")
-            _check([], "nominal")
+    with pytest.warns(UserWarning, match=r"infer vegalite type"):
+        _check([], "nominal")
 
 
 def test_sanitize_dataframe():
@@ -46,11 +42,11 @@ def test_sanitize_dataframe():
             "f": np.arange(5, dtype=float),
             "i": np.arange(5, dtype=int),
             "b": np.array([True, False, True, True, False]),
-            "d": pd.date_range("2012-01-01", periods=5, freq="H"),
+            "d": pd.date_range("2012-01-01", periods=5, freq="h"),
             "c": pd.Series(list("ababc"), dtype="category"),
             "c2": pd.Series([1, "A", 2.5, "B", None], dtype="category"),
             "o": pd.Series([np.array(i) for i in range(5)]),
-            "p": pd.date_range("2012-01-01", periods=5, freq="H").tz_localize("UTC"),
+            "p": pd.date_range("2012-01-01", periods=5, freq="h").tz_localize("UTC"),
         }
     )
 
@@ -62,7 +58,7 @@ def test_sanitize_dataframe():
 
     # JSON serialize. This will fail on non-sanitized dataframes
     print(df[["s", "c2"]])
-    df_clean = sanitize_dataframe(df)
+    df_clean = sanitize_pandas_dataframe(df)
     print(df_clean[["s", "c2"]])
     print(df_clean[["s", "c2"]].to_dict())
     s = json.dumps(df_clean.to_dict(orient="records"))
@@ -74,23 +70,28 @@ def test_sanitize_dataframe():
     # Re-order the columns to match df
     df2 = df2[df.columns]
 
+    # pandas doesn't properly recognize np.array(np.nan); use float64 so df matches read_json
+    df.iloc[0, df.columns.get_loc("o")] = np.nan
+    df["o"] = df["o"].astype(np.float64)
+
     # Re-apply original types
     for col in df:
         if str(df[col].dtype).startswith("datetime"):
             # astype(datetime) introduces time-zone issues:
             # to_datetime() does not.
-            utc = isinstance(df[col].dtype, pd.core.dtypes.dtypes.DatetimeTZDtype)
+            utc = isinstance(df[col].dtype, pd.DatetimeTZDtype)
             df2[col] = pd.to_datetime(df2[col], utc=utc)
         else:
             df2[col] = df2[col].astype(df[col].dtype)
 
-    # pandas doesn't properly recognize np.array(np.nan), so change it here
-    df.iloc[0, df.columns.get_loc("o")] = np.nan
     assert df.equals(df2)
 
 
-@pytest.mark.skipif(pa is None, reason="pyarrow not installed")
+@pytest.mark.filterwarnings("ignore:'H' is deprecated.*:FutureWarning")
+@skip_requires_pyarrow
 def test_sanitize_dataframe_arrow_columns():
+    import pyarrow as pa
+
     # create a dataframe with various types
     df = pd.DataFrame(
         {
@@ -98,13 +99,13 @@ def test_sanitize_dataframe_arrow_columns():
             "f": np.arange(5, dtype=float),
             "i": np.arange(5, dtype=int),
             "b": np.array([True, False, True, True, False]),
-            "d": pd.date_range("2012-01-01", periods=5, freq="H"),
+            "d": pd.date_range("2012-01-01", periods=5, freq="h"),
             "c": pd.Series(list("ababc"), dtype="category"),
-            "p": pd.date_range("2012-01-01", periods=5, freq="H").tz_localize("UTC"),
+            "p": pd.date_range("2012-01-01", periods=5, freq="h").tz_localize("UTC"),
         }
     )
     df_arrow = pa.Table.from_pandas(df).to_pandas(types_mapper=pd.ArrowDtype)
-    df_clean = sanitize_dataframe(df_arrow)
+    df_clean = sanitize_pandas_dataframe(df_arrow)
     records = df_clean.to_dict(orient="records")
     assert records[0] == {
         "s": "a",
@@ -120,8 +121,10 @@ def test_sanitize_dataframe_arrow_columns():
     json.dumps(records)
 
 
-@pytest.mark.skipif(pa is None, reason="pyarrow not installed")
-def test_sanitize_pyarrow_table_columns():
+@skip_requires_pyarrow(requires_tzdata=True)
+def test_sanitize_pyarrow_table_columns() -> None:
+    import pyarrow as pa
+
     # create a dataframe with various types
     df = pd.DataFrame(
         {
@@ -129,9 +132,9 @@ def test_sanitize_pyarrow_table_columns():
             "f": np.arange(5, dtype=float),
             "i": np.arange(5, dtype=int),
             "b": np.array([True, False, True, True, False]),
-            "d": pd.date_range("2012-01-01", periods=5, freq="H"),
+            "d": pd.date_range("2012-01-01", periods=5, freq="h"),
             "c": pd.Series(list("ababc"), dtype="category"),
-            "p": pd.date_range("2012-01-01", periods=5, freq="H").tz_localize("UTC"),
+            "p": pd.date_range("2012-01-01", periods=5, freq="h").tz_localize("UTC"),
         }
     )
 
@@ -139,7 +142,7 @@ def test_sanitize_pyarrow_table_columns():
     pa_table = pa.Table.from_pandas(
         df,
         pa.schema(
-            [
+            (
                 pa.field("s", pa.string()),
                 pa.field("f", pa.float64()),
                 pa.field("i", pa.int64()),
@@ -147,11 +150,11 @@ def test_sanitize_pyarrow_table_columns():
                 pa.field("d", pa.date32()),
                 pa.field("c", pa.dictionary(pa.int8(), pa.string())),
                 pa.field("p", pa.timestamp("ns", tz="UTC")),
-            ]
+            )
         ),
     )
-    sanitized = sanitize_arrow_table(pa_table)
-    values = sanitized.to_pylist()
+    sanitized = sanitize_narwhals_dataframe(nw.from_native(pa_table, eager_only=True))
+    values = sanitized.rows(named=True)
 
     assert values[0] == {
         "s": "a",
@@ -167,37 +170,59 @@ def test_sanitize_pyarrow_table_columns():
     json.dumps(values)
 
 
+@skip_requires_polars
+def test_sanitize_polars_datetime_timezone_preserved() -> None:
+    import polars as pl
+
+    start = pl.datetime(2023, 11, 5, time_zone="US/Mountain")
+    df = pl.DataFrame(
+        {
+            "datetime": pl.datetime_range(
+                start, start.dt.offset_by("3h"), "1h", closed="both", eager=True
+            ),
+            "value": [10, 20, 30, 40],
+        }
+    )
+
+    sanitized = sanitize_narwhals_dataframe(nw.from_native(df, eager_only=True))
+
+    assert sanitized.rows(named=True) == [
+        {"datetime": "2023-11-05T00:00:00-0600", "value": 10},
+        {"datetime": "2023-11-05T01:00:00-0600", "value": 20},
+        {"datetime": "2023-11-05T01:00:00-0700", "value": 30},
+        {"datetime": "2023-11-05T02:00:00-0700", "value": 40},
+    ]
+
+
 def test_sanitize_dataframe_colnames():
     df = pd.DataFrame(np.arange(12).reshape(4, 3))
 
     # Test that RangeIndex is converted to strings
-    df = sanitize_dataframe(df)
+    df = sanitize_pandas_dataframe(df)
     assert [isinstance(col, str) for col in df.columns]
 
     # Test that non-string columns result in an error
     df.columns = [4, "foo", "bar"]
-    with pytest.raises(ValueError) as err:
-        sanitize_dataframe(df)
-    assert str(err.value).startswith("Dataframe contains invalid column name: 4.")
+    with pytest.raises(ValueError, match=r"Dataframe contains invalid column name: 4."):
+        sanitize_pandas_dataframe(df)
 
 
 def test_sanitize_dataframe_timedelta():
     df = pd.DataFrame({"r": pd.timedelta_range(start="1 day", periods=4)})
-    with pytest.raises(ValueError) as err:
-        sanitize_dataframe(df)
-    assert str(err.value).startswith('Field "r" has type "timedelta')
+    with pytest.raises(ValueError, match='Field "r" has type "timedelta'):
+        sanitize_pandas_dataframe(df)
 
 
 def test_sanitize_dataframe_infs():
     df = pd.DataFrame({"x": [0, 1, 2, np.inf, -np.inf, np.nan]})
-    df_clean = sanitize_dataframe(df)
+    df_clean = sanitize_pandas_dataframe(df)
     assert list(df_clean.dtypes) == [object]
     assert list(df_clean["x"]) == [0, 1, 2, None, None, None]
 
 
 @pytest.mark.skipif(
     not hasattr(pd, "Int64Dtype"),
-    reason="Nullable integers not supported in pandas v{}".format(pd.__version__),
+    reason=f"Nullable integers not supported in pandas v{pd.__version__}",
 )
 def test_sanitize_nullable_integers():
     df = pd.DataFrame(
@@ -211,7 +236,7 @@ def test_sanitize_nullable_integers():
         }
     )
 
-    df_clean = sanitize_dataframe(df)
+    df_clean = sanitize_pandas_dataframe(df)
     assert {col.dtype.name for _, col in df_clean.items()} == {"object"}
 
     result_python = {col_name: list(col) for col_name, col in df_clean.items()}
@@ -227,7 +252,7 @@ def test_sanitize_nullable_integers():
 
 @pytest.mark.skipif(
     not hasattr(pd, "StringDtype"),
-    reason="dedicated String dtype not supported in pandas v{}".format(pd.__version__),
+    reason=f"dedicated String dtype not supported in pandas v{pd.__version__}",
 )
 def test_sanitize_string_dtype():
     df = pd.DataFrame(
@@ -239,8 +264,9 @@ def test_sanitize_string_dtype():
         }
     )
 
-    df_clean = sanitize_dataframe(df)
-    assert {col.dtype.name for _, col in df_clean.items()} == {"object"}
+    df_clean = sanitize_pandas_dataframe(df)
+    # pandas 3+ with pyarrow may leave .dtype.name as "str" in some cases
+    assert {col.dtype.name for _, col in df_clean.items()} <= {"object", "str"}
 
     result_python = {col_name: list(col) for col_name, col in df_clean.items()}
     assert result_python == {
@@ -253,7 +279,7 @@ def test_sanitize_string_dtype():
 
 @pytest.mark.skipif(
     not hasattr(pd, "BooleanDtype"),
-    reason="Nullable boolean dtype not supported in pandas v{}".format(pd.__version__),
+    reason=f"Nullable boolean dtype not supported in pandas v{pd.__version__}",
 )
 def test_sanitize_boolean_dtype():
     df = pd.DataFrame(
@@ -264,7 +290,7 @@ def test_sanitize_boolean_dtype():
         }
     )
 
-    df_clean = sanitize_dataframe(df)
+    df_clean = sanitize_pandas_dataframe(df)
     assert {col.dtype.name for _, col in df_clean.items()} == {"object"}
 
     result_python = {col_name: list(col) for col_name, col in df_clean.items()}

@@ -4,14 +4,14 @@ Lasagna Plot (Dense Time-Series Heatmap)
 """
 # category: tables
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.stocks()
 
-color_condition = alt.condition(
-    "month(datum.value) == 1 && date(datum.value) == 1",
-    alt.value("black"),
-    alt.value(None),
+color_condition = (
+    alt.when(alt.expr.month("datum.value") == 1, alt.expr.date("datum.value") == 1)
+    .then(alt.value("black"))
+    .otherwise(alt.value(None))
 )
 
 alt.Chart(source, width=300, height=100).transform_filter(

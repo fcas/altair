@@ -28,18 +28,66 @@ git clone https://github.com/YOUR-USERNAME/altair.git
 To keep your fork up to date with changes in this repo,
 you can [use the fetch upstream button on GitHub](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork).
 
-Now you can install the latest version of Altair locally using `pip`.
-The `-e` flag indicates that your local changes will be reflected
-every time you open a new Python interpreter
-(instead of having to reinstall the package each time).
+> [!NOTE]
+> Altair's local version is derived from Git release tags. If your fork
+> is missing the latest upstream tags, the version reported by a local install
+> may be using an older tag as the base (or be reported as
+> `4.0.0+fallback` if no upstream tags are present). If you want accurate
+> version reporting for a locally installed development version, make sure to
+> fetch all upstream tags:
+>
+> ```cmd
+> git fetch --tags https://github.com/vega/altair.git
+> ```
+
+[Install `uv`](https://docs.astral.sh/uv/getting-started/installation/), or update to the latest version:
 
 ```cmd
-cd altair/ 
-python -m pip install -e ".[all, dev]"
+uv self update
 ```
 
-'[all, dev]' indicates that pip should also install the optional and development requirements
-which you can find in `pyproject.toml` (`[project.optional-dependencies]/all` and `[project.optional-dependencies]/dev`)
+Install Python:
+
+```cmd
+uv python install 3.12
+```
+
+Initialize a new virtual environment:
+
+```cmd
+cd altair/
+uv venv -p 3.12
+```
+
+Activate your environment:
+
+<details><summary>macOS/Linux</summary>
+<p>
+
+```bash
+source .venv/bin/activate
+```
+
+</p>
+</details> 
+
+<details><summary>Windows</summary>
+<p>
+
+```cmd
+.venv\Scripts\activate
+```
+
+</p>
+</details> 
+
+Install the project with all development dependencies:
+```cmd
+uv sync --all-extras
+```
+
+> [!TIP]
+> If you're new to `uv`, check out their [Getting started](https://docs.astral.sh/uv/getting-started/) guide for help
 
 ### Creating a Branch
 
@@ -56,19 +104,23 @@ With this branch checked-out, make the desired changes to the package.
 A large part of Altair's code base is automatically generated.
 After you have made your manual changes,
 make sure to run the following to see if there are any changes
-to the automatically generated files: `python tools/generate_schema_wrapper.py`.
+to the automatically generated files: 
+
+```bash
+uv run task generate-schema-wrapper
+```
 
 For information on how to update the Vega-Lite version that Altair uses,
 please read [the maintainers' notes](NOTES_FOR_MAINTAINERS.md).
 
 ### Testing your Changes
 
-Before suggesting your contributing your changing to the main Altair repository,
+Before submitting your changes to the main Altair repository,
 it is recommended that you run the Altair test suite,
 which includes a number of tests to validate the correctness of your code:
 
-```cmd
-hatch run test
+```bash
+uv run task test
 ```
 
 
@@ -77,6 +129,28 @@ This also runs the [`ruff`](https://ruff.rs/) linter and formatter as well as [`
 
 Study the output of any failed tests and try to fix the issues
 before proceeding to the next section.
+
+#### Failures on specific python version(s)
+
+By default, `uv run task test` will run the test suite against the currently active python version.
+Two useful variants for debugging failures that only appear *after* you've submitted your PR:
+
+```bash
+# Test against all python version(s) in the matrix
+uv run task test-all
+# Test against our minimum required version
+uv run task test-min
+```
+
+See [hatch test](https://hatch.pypa.io/latest/cli/reference/#hatch-test) docs for other options.
+
+#### Changes to `__all__`
+If `test_completeness_of__all__` fails, you may need to run:
+
+```bash
+uv run task update-init-file
+```
+However, this test usually indicates *unintentional* addition(s) to the top-level `alt.` namespace that will need resolving first.
 
 ### Creating a Pull Request
 
@@ -110,8 +184,8 @@ we have some conventions and plugins that are used to help navigate the docs and
 generate great Altair visualizations. 
 
 Note that the [Altair website](https://altair-viz.github.io/)
-is only updated when a new version is released so your contribution might not show
-up for a while.
+is only updated when a new version is released so your contributions
+might not show immediately.
 
 ### Adding Examples
 
@@ -120,33 +194,30 @@ could be everything from simple one-panel scatter and line plots, to more
 complicated layered or stacked plots, to more advanced interactive features.
 Before submitting a new example check the [Altair Example
 Gallery](https://altair-viz.github.io/gallery/index.html) to make sure that
-your idea has not already been implemented. 
+your idea has not already been implemented.
 
-Once you have an example you would like to add there are a few guide lines to follow.
-Every example should:
-- have a `arguments_syntax` and `methods_syntax` implementation. Each implementation 
-  must be saved as a stand alone script in the `tests/examples_arguments_syntax` 
+When contributing to the gallery, there are a few guidelines each example should follow:
+
+- Have an `arguments_syntax` and `methods_syntax` implementation. Each implementation
+  must be saved as a standalone script in the `tests/examples_arguments_syntax`
   and `tests/examples_methods_syntax` directories.
-- have a descriptive docstring, which will eventually be extracted for the
+- Have a descriptive docstring, which will eventually be extracted for the
   documentation website.
-- contain a category tag.
-- define a chart variable with the main chart object (This will be used both in
-  the unit tests to confirm that the example executes properly, and also
-  eventually used to display the visualization on the documentation website).
-- not make any external calls to download data within the script (i.e. don't
+- Contain a `# :new:` tag followed by a `# category ...` tag on a separate line.
+- Define a `chart` variable with the main chart object.
+    - This will be used both in the unit tests to confirm that the example executes 
+      properly, and to display the visualization on the documentation website.
+- Avoid making any external calls to download data within the script (e.g. don't
   use urllib). You can define your data directly within the example file,
   generate your data using pandas and numpy, or you can use data
-  available in the `vega_datasets` package.
+  available in the `altair.datasets` module.
+    - This is to ensure that Altair's automated test suite does not depend
+      on availability of external HTTP resources.
 
 The easiest way to get started would be to adapt examples from the [Vega-Lite
 example gallery](https://vega.github.io/vega-lite/examples/) which are missing
 in the Altair gallery. Or you can feel free to be creative and build your own
 visualizations.
-
-Often it is convenient to draft an example outside of the main repository, such
-as [Google Colab](https://colab.research.google.com/), to avoid difficulties
-when working with git. Once you have an example you would like to add, follow the
-same contribution procedure outlined above.
 
 Some additional notes:
 
@@ -162,15 +233,10 @@ Some additional notes:
   variable `source`. Then `source` is passed to the `alt.Chart` object.
   If the example requires multiple dataframes then this does not apply. See
   other examples for guidance. 
-- Example code should not require downloading external datasets. We suggest
-  using the `vega_datasets` package if possible.
-  If you are using the `vega_datasets` package there are multiple ways to refer
-  to a data source. If the dataset you would like to use is included in local
-  installation (`vega_datasets.local_data.list_datasets()`) then the data can
-  be referenced directly, such as `source = data.iris()`. If the data is not
-  included then it should be referenced by URL, such as `source =
-  data.movies.url`. This is to ensure that Altair's automated test suite does
-  not depend on availability of external HTTP resources.
+- If you are using the `altair.datasets` module there are multiple ways to refer
+  to a data source. The data can be referenced directly, such as
+  `source = data.penguins()`, or it can be referenced by URL, such as
+  `source = data.movies.url`.
 - If VlConvert does not support PNG export of the chart (e.g. in the case of emoji),
   then add the name of the example to the `SVG_EXAMPLES` set in 
   `tests/examples_arguments_syntax/__init__.py` and `tests/examples_methods_syntax/__init__.py`
@@ -179,28 +245,44 @@ Some additional notes:
 
 The process to build the documentation locally consists of three steps:
 
-1. Clean any previously generated files to ensure a clean build.
-2. Generate the documentation in HTML format.
-3. View the generated documentation using a local Python testing server.
+1. **Clean** (remove) any previously generated documentation files.
+2. **Build** the documentation in HTML format.
+3. View the documentation using a *local* Python testing **server**.
 
-The specific commands for each step depend on your operating system.
-Make sure you execute the following commands from the root dir of altair and have [`hatch`](https://hatch.pypa.io/) installed in your local environment.
-
-- For MacOS and Linux, run the following commands in your terminal:
+Steps 1 and 2 can be run as a single command, followed by step 3:
 ```cmd
-hatch run doc:clean-all
-hatch run doc:build-html
-hatch run doc:serve
+uv run task doc-build -- --clean
+uv run task doc-serve
 ```
 
-- For Windows, use these commands instead:
+The docs take a long time to build, mostly due to the extensive autogenerated
+API pages, but also because of the many gallery examples. If you don't edit
+these as part of your PR, you can build the docs without them which drastically
+reduces build time:
+
 ```cmd
-hatch run doc:clean-all-win
-hatch run doc:build-html-win
-hatch run doc:serve
+uv run task doc-build -- --clean --no-autosummary --no-gallery
+uv run task doc-serve
 ```
 
-To view the documentation, open your browser and go to `http://localhost:8000`. To stop the server, use `^C` (control+c) in the terminal.
+The `--watch` flag automatically rebuilds and refreshes the docs in a browser
+tab upon detecting changes to the `.rst` files. This command works best when
+not rendering the autosummary since that slows down the automatic rebuild
+(including the gallery is fine since only changed examples are rebuilt). This
+is probably the command you want to use the most often for local doc
+development as it provides a convenient workflow where your changes are visible
+in just a few seconds.
+
+```cmd
+uv run task doc-build -- --clean --no-autosummary --watch
+```
+
+If a browser tab is not opened automatically, you can manually navigate to
+`http://localhost:8000` (or whichever URL is shown in the terminal). To stop
+the server, use `^C` (control+c) in the terminal.
+
+> [!TIP]
+> If these commands were not available for you, make sure you've [set up your environment](#setting-up-your-environment)
 
 ---
 

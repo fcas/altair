@@ -7,7 +7,7 @@ see the distribution of weather types in a particular date range.
 """
 # category: case studies
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.seattle_weather()
 
@@ -29,7 +29,7 @@ points = alt.Chart().mark_point().encode(
         .title('Maximum Daily Temperature (C)')
         .scale(domain=[-5, 40]),
     alt.Size('precipitation:Q').scale(range=[5, 200]),
-    color=alt.condition(brush, color, alt.value('lightgray')),
+    color=alt.when(brush).then(color).otherwise(alt.value("lightgray")),
 ).properties(
     width=550,
     height=300
@@ -43,7 +43,7 @@ points = alt.Chart().mark_point().encode(
 bars = alt.Chart().mark_bar().encode(
     x='count()',
     y='weather:N',
-    color=alt.condition(click, color, alt.value('lightgray')),
+    color=alt.when(click).then(color).otherwise(alt.value("lightgray")),
 ).transform_filter(
     brush
 ).properties(

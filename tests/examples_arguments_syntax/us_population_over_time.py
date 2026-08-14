@@ -7,7 +7,7 @@ distribution over time.
 """
 # category: case studies
 import altair as alt
-from vega_datasets import data
+from altair.datasets import data
 
 source = data.population.url
 
@@ -15,7 +15,7 @@ select_year = alt.selection_point(
     name="Year",
     fields=["year"],
     bind=alt.binding_range(min=1900, max=2000, step=10, name="Year"),
-    value={"year": 2000},
+    value=2000,
 )
 
 alt.Chart(source).mark_bar().encode(

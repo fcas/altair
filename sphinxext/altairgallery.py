@@ -1,30 +1,37 @@
-import hashlib
-import os
-import json
-import random
+from __future__ import annotations
+
 import collections
-from operator import itemgetter
-import warnings
+import filecmp
+import hashlib
+import json
+import os
+import random
 import shutil
+import warnings
+from operator import itemgetter
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import jinja2
-
 from docutils import nodes
-from docutils.statemachine import ViewList
 from docutils.parsers.rst import Directive
 from docutils.parsers.rst.directives import flag
-
+from docutils.statemachine import StringList
 from sphinx.util.nodes import nested_parse_with_titles
 
-from .utils import (
-    get_docstring_and_rest,
-    prev_this_next,
-    create_thumbnail,
-    create_generic_image,
-)
 from altair.utils.execeval import eval_block
 from tests.examples_arguments_syntax import iter_examples_arguments_syntax
 from tests.examples_methods_syntax import iter_examples_methods_syntax
+
+from .utils import (
+    create_generic_image,
+    create_thumbnail,
+    get_docstring_and_rest,
+    prev_this_next,
+)
+
+if TYPE_CHECKING:
+    from docutils.nodes import Node
 
 
 EXAMPLE_MODULE = "altair.examples"
@@ -41,13 +48,50 @@ GALLERY_TEMPLATE = jinja2.Template(
 
 This gallery contains a selection of examples of the plots Altair can create. Some may seem fairly complicated at first glance, but they are built by combining a simple set of declarative building blocks.
 
-Many draw upon sample datasets compiled by the `Vega <https://vega.github.io/vega/>`_ project. To access them yourself, install `vega_datasets <https://github.com/altair-viz/vega_datasets>`_.
-
-.. code-block:: none
-
-   python -m pip install vega_datasets
+Many draw upon sample datasets compiled by the `Vega <https://vega.github.io/vega/>`_ project.
 
 If you can't find the plots you are looking for here, make sure to check out the :ref:`altair-ecosystem` section, which has links to packages for making e.g. network diagrams and animations.
+
+.. note::
+
+    With the release of Altair 6, the documentation was updated to use
+    ``from altair.datasets import data`` instead of ``from vega_datasets import data``.
+    This change also introduced updated column names in some datasets (e.g., spaces
+    instead of underscores).
+
+{% if recent_examples %}
+
+.. _gallery-category-recently-added:
+
+.. |gallery-new-pill| raw:: html
+
+   <span class="gallery-inline-tag">new</span>
+
+Recently Added |gallery-new-pill|
+~~~~~~~~~~~~~~
+
+.. raw:: html
+
+   <span class="gallery">
+   {% for example in recent_examples %}
+   <a class="imagegroup{% if example['is_new'] %} imagegroup-recent{% endif %}" href="{{ example.name }}.html">
+   <span
+         class="image" alt="{{ example.title }}"
+{% if example['use_svg'] %}
+        style="background-image: url(..{{ image_dir }}/{{ example.name }}-thumb.svg);"
+{% else %}
+        style="background-image: url(..{{ image_dir }}/{{ example.name }}-thumb.png);"
+{% endif %}
+    ></span>
+
+     <span class="image-title">{{ example.title }}</span>
+   </a>
+   {% endfor %}
+   </span>
+
+   <div style='clear:both;'></div>
+
+{% endif %}
 
 {% for grouper, group in examples %}
 
@@ -60,9 +104,12 @@ If you can't find the plots you are looking for here, make sure to check out the
 
    <span class="gallery">
    {% for example in group %}
-   <a class="imagegroup" href="{{ example.name }}.html">
+   <a class="imagegroup{% if example['is_new'] %} imagegroup-new{% endif %}" href="{{ example.name }}.html">
+   {% if example['is_new'] %}
+   <span class="image-tag">new</span>
+   {% endif %}
    <span
-        class="image" alt="{{ example.title }}"
+         class="image" alt="{{ example.title }}"
 {% if example['use_svg'] %}
         style="background-image: url(..{{ image_dir }}/{{ example.name }}-thumb.svg);"
 {% else %}
@@ -148,33 +195,38 @@ EXAMPLE_TEMPLATE = jinja2.Template(
 )
 
 
-def save_example_pngs(examples, image_dir, make_thumbnails=True):
-    """Save example pngs and (optionally) thumbnails"""
-    if not os.path.exists(image_dir):
-        os.makedirs(image_dir)
+def save_example_pngs(
+    examples: list[dict[str, Any]], image_dir: Path, make_thumbnails: bool = True
+) -> None:
+    """Save example pngs and (optionally) thumbnails."""
+    encoding = "utf-8"
 
     # store hashes so that we know whether images need to be generated
-    hash_file = os.path.join(image_dir, "_image_hashes.json")
+    hash_file: Path = image_dir / "_image_hashes.json"
 
-    if os.path.exists(hash_file):
-        with open(hash_file) as f:
+    if hash_file.exists():
+        with hash_file.open(encoding=encoding) as f:
             hashes = json.load(f)
     else:
         hashes = {}
 
     for example in examples:
-        filename = example["name"] + (".svg" if example["use_svg"] else ".png")
-        image_file = os.path.join(image_dir, filename)
+        name: str = example["name"]
+        use_svg: bool = example["use_svg"]
+        code = example["code"]
 
-        example_hash = hashlib.sha256(example["code"].encode()).hexdigest()[:32]
+        filename = name + (".svg" if use_svg else ".png")
+        image_file = image_dir / filename
+
+        example_hash = hashlib.sha256(code.encode()).hexdigest()[:32]
         hashes_match = hashes.get(filename, "") == example_hash
 
-        if hashes_match and os.path.exists(image_file):
-            print("-> using cached {}".format(image_file))
+        if hashes_match and image_file.exists():
+            print(f"-> using cached {image_file!s}")
         else:
             # the file changed or the image file does not exist. Generate it.
-            print("-> saving {}".format(image_file))
-            chart = eval_block(example["code"])
+            print(f"-> saving {image_file!s}")
+            chart = eval_block(code, strict=True)
             try:
                 chart.save(image_file)
                 hashes[filename] = example_hash
@@ -182,34 +234,41 @@ def save_example_pngs(examples, image_dir, make_thumbnails=True):
                 warnings.warn("Unable to save image: using generic image", stacklevel=1)
                 create_generic_image(image_file)
 
-            with open(hash_file, "w") as f:
+            with hash_file.open("w", encoding=encoding) as f:
                 json.dump(hashes, f)
 
         if make_thumbnails:
             params = example.get("galleryParameters", {})
-            if example["use_svg"]:
+            if use_svg:
                 # Thumbnail for SVG is identical to original image
-                thumb_file = os.path.join(image_dir, example["name"] + "-thumb.svg")
-                shutil.copyfile(image_file, thumb_file)
+                thumb_file = image_dir / f"{name}-thumb.svg"
+                if (
+                    not hashes_match
+                    or not thumb_file.exists()
+                    or not filecmp.cmp(image_file, thumb_file, shallow=False)
+                ):
+                    shutil.copyfile(image_file, thumb_file)
             else:
-                thumb_file = os.path.join(image_dir, example["name"] + "-thumb.png")
-                create_thumbnail(image_file, thumb_file, **params)
+                thumb_file = image_dir / f"{name}-thumb.png"
+                if not hashes_match or not thumb_file.exists():
+                    create_thumbnail(image_file, thumb_file, **params)
 
     # Save hashes so we know whether we need to re-generate plots
-    with open(hash_file, "w") as f:
+    with hash_file.open("w", encoding=encoding) as f:
         json.dump(hashes, f)
 
 
-def populate_examples(**kwds):
-    """Iterate through Altair examples and extract code"""
-
+def populate_examples(**kwds: Any) -> list[dict[str, Any]]:
+    """Iterate through Altair examples and extract code."""
     examples = sorted(iter_examples_arguments_syntax(), key=itemgetter("name"))
     method_examples = {x["name"]: x for x in iter_examples_methods_syntax()}
 
     for example in examples:
-        docstring, category, code, lineno = get_docstring_and_rest(example["filename"])
-        if example["name"] in method_examples.keys():
-            _, _, method_code, _ = get_docstring_and_rest(
+        docstring, category, code, lineno, is_new = get_docstring_and_rest(
+            example["filename"]
+        )
+        if example["name"] in method_examples:
+            _, _, method_code, _, _ = get_docstring_and_rest(
                 method_examples[example["name"]]["filename"]
             )
         else:
@@ -220,9 +279,8 @@ def populate_examples(**kwds):
             )
         example.update(kwds)
         if category is None:
-            raise Exception(
-                f"The example {example['name']} is not assigned to a category"
-            )
+            msg = f"The example {example['name']} is not assigned to a category"
+            raise Exception(msg)
         example.update(
             {
                 "docstring": docstring,
@@ -231,10 +289,15 @@ def populate_examples(**kwds):
                 "method_code": method_code,
                 "category": category.title(),
                 "lineno": lineno,
+                "is_new": is_new,
             }
         )
 
     return examples
+
+
+def _indices(x: str, /) -> list[int]:
+    return [int(idx) for idx in x.split()]
 
 
 class AltairMiniGalleryDirective(Directive):
@@ -243,14 +306,14 @@ class AltairMiniGalleryDirective(Directive):
     option_spec = {
         "size": int,
         "names": str,
-        "indices": lambda x: list(map(int, x.split())),
+        "indices": _indices,
         "shuffle": flag,
         "seed": int,
         "titles": bool,
         "width": str,
     }
 
-    def run(self):
+    def run(self) -> list[Node]:
         size = self.options.get("size", 15)
         names = [name.strip() for name in self.options.get("names", "").split(",")]
         indices = self.options.get("indices", [])
@@ -268,10 +331,11 @@ class AltairMiniGalleryDirective(Directive):
 
         if names:
             if len(names) < size:
-                raise ValueError(
+                msg = (
                     "altair-minigallery: if names are specified, "
                     "the list must be at least as long as size."
                 )
+                raise ValueError(msg)
             mapping = {example["name"]: example for example in examples}
             examples = [mapping[name] for name in names]
         else:
@@ -292,7 +356,7 @@ class AltairMiniGalleryDirective(Directive):
         )
 
         # parse and return documentation
-        result = ViewList()
+        result = StringList()
         for line in include.split("\n"):
             result.append(line, "<altair-minigallery>")
         node = nodes.paragraph()
@@ -302,19 +366,29 @@ class AltairMiniGalleryDirective(Directive):
         return node.children
 
 
-def main(app):
-    gallery_dir = app.builder.config.altair_gallery_dir
-    target_dir = os.path.join(app.builder.srcdir, gallery_dir)
-    image_dir = os.path.join(app.builder.srcdir, "_images")
+def main(app) -> None:
+    env_flag = os.environ.get("ALTAIR_GALLERY_GENERATE")
+    if env_flag is not None:
+        should_generate = env_flag != "0"
+    else:
+        should_generate = getattr(app.builder.config, "altair_gallery_generate", True)
+
+    if not should_generate:
+        print("-> skipping Altair gallery generation")
+        return
+
+    src_dir = Path(app.builder.srcdir)
+    target_dir: Path = src_dir / Path(app.builder.config.altair_gallery_dir)
+    image_dir: Path = src_dir / "_images"
 
     gallery_ref = app.builder.config.altair_gallery_ref
     gallery_title = app.builder.config.altair_gallery_title
     examples = populate_examples(gallery_ref=gallery_ref, code_below=True, strict=False)
 
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    image_dir.mkdir(exist_ok=True)
 
-    examples = sorted(examples, key=lambda x: x["title"])
+    examples = sorted(examples, key=itemgetter("title"))
     examples_toc = collections.OrderedDict(
         {
             "Simple Charts": [],
@@ -335,16 +409,21 @@ def main(app):
     for d in examples:
         examples_toc[d["category"]].append(d)
 
+    recent_examples = [example for example in examples if example["is_new"]]
+
+    encoding = "utf-8"
+
     # Write the gallery index file
-    with open(os.path.join(target_dir, "index.rst"), "w") as f:
-        f.write(
-            GALLERY_TEMPLATE.render(
-                title=gallery_title,
-                examples=examples_toc.items(),
-                image_dir="/_static",
-                gallery_ref=gallery_ref,
-            )
-        )
+    fp = target_dir / "index.rst"
+    index_text = GALLERY_TEMPLATE.render(
+        title=gallery_title,
+        examples=examples_toc.items(),
+        recent_examples=recent_examples,
+        image_dir="/_static",
+        gallery_ref=gallery_ref,
+    )
+    if not fp.exists() or fp.read_text(encoding=encoding) != index_text:
+        fp.write_text(index_text, encoding=encoding)
 
     # save the images to file
     save_example_pngs(examples, image_dir)
@@ -355,12 +434,13 @@ def main(app):
             example["prev_ref"] = "gallery_{name}".format(**prev_ex)
         if next_ex:
             example["next_ref"] = "gallery_{name}".format(**next_ex)
-        target_filename = os.path.join(target_dir, example["name"] + ".rst")
-        with open(os.path.join(target_filename), "w", encoding="utf-8") as f:
-            f.write(EXAMPLE_TEMPLATE.render(example))
+        fp = target_dir / "".join((example["name"], ".rst"))
+        page_text = EXAMPLE_TEMPLATE.render(example)
+        if not fp.exists() or fp.read_text(encoding=encoding) != page_text:
+            fp.write_text(page_text, encoding=encoding)
 
 
-def setup(app):
+def setup(app) -> None:
     app.connect("builder-inited", main)
     app.add_css_file("altair-gallery.css")
     app.add_config_value("altair_gallery_dir", "gallery", "env")
